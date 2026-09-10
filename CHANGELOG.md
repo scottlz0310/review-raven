@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-10
+
 ### Added
 
 - Added a metadata-only projection to `get_review_threads` via `include_bodies: false`. The projection omits review comment bodies at the GraphQL query level while returning comment IDs, author metadata, URLs, thread resolution state, and pagination completion information. ([Issue #124](https://github.com/scottlz0310/review-raven/issues/124))
@@ -190,7 +192,8 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0
