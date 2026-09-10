@@ -819,9 +819,13 @@ func (c *Client) appendReviewThreadMetadataComments(
 		return nil
 	}
 
+	initialCursor := comments.PageInfo.EndCursor
+	if initialCursor == "" {
+		return fmt.Errorf("graphql metadata comments query returned hasNextPage=true with empty endCursor")
+	}
 	vars := map[string]interface{}{
 		"id":     threadID,
-		"cursor": (*githubv4.String)(nil),
+		"cursor": &initialCursor,
 	}
 	for {
 		var q reviewThreadMetadataCommentsPageQuery
