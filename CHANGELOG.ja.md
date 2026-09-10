@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-10
+
 ### 追加
 
 - `get_review_threads` に `include_bodies: false` のメタデータのみの射影を追加しました。GraphQL query レベルでレビュースレッド本文を選択せず、コメント ID・投稿者メタデータ・URL・スレッドの解決状態・ページネーション完了情報を返します。([Issue #124](https://github.com/scottlz0310/review-raven/issues/124))
@@ -190,7 +192,8 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scottlz0310/review-raven/releases/tag/v0.1.0

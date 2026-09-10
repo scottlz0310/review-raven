@@ -84,7 +84,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	// fully initialized, so watchManager is always non-nil.
 	var watchManager *watch.Manager
 	srv := mcp.NewServer(
-		&mcp.Implementation{Name: "review-raven", Version: "0.3.0"},
+		&mcp.Implementation{Name: "review-raven", Version: "0.4.0"},
 		&mcp.ServerOptions{
 			SchemaCache: schemaCache,
 			SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {
