@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a metadata-only projection to `get_review_threads` via `include_bodies: false`. The projection omits review comment bodies at the GraphQL query level while returning comment IDs, author metadata, URLs, thread resolution state, and pagination completion information. ([Issue #124](https://github.com/scottlz0310/review-raven/issues/124))
+
 ### Removed
 
 - Removed both language versions of `review-raven-thread-owl-cycle` from this repository, consolidating skill source and installation in Mcp-Docker. Retired the English skill and both language versions of the unused Copilot-only `pr-review-cycle`, and updated the guides to reference Mcp-Docker's canonical source and installation instructions. ([Issue #122](https://github.com/scottlz0310/review-raven/issues/122))

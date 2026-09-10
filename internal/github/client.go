@@ -507,13 +507,69 @@ type reviewThreadNode struct {
 	StartLine  *githubv4.Int
 	Comments   struct {
 		Nodes []struct {
-			Body      githubv4.String
-			CreatedAt githubv4.DateTime
-			Author    struct {
-				Login githubv4.String
+			DatabaseID int64
+			URL        githubv4.String
+			Body       githubv4.String
+			CreatedAt  githubv4.DateTime
+			Author     struct {
+				Login    githubv4.String
+				TypeName githubv4.String `graphql:"__typename"`
 			}
 		}
 	} `graphql:"comments(first: 10)"`
+}
+
+// reviewThreadMetadataComment は投稿者ゲートで使う本文なしコメント射影です。
+// 射影を分離することで、メタデータのみの取得時に GitHub から本文を選択しません。
+type reviewThreadMetadataComment struct {
+	DatabaseID int64
+	URL        githubv4.String
+	CreatedAt  githubv4.DateTime
+	Author     struct {
+		Login    githubv4.String
+		TypeName githubv4.String `graphql:"__typename"`
+	}
+}
+
+type reviewThreadMetadataComments struct {
+	Nodes    []reviewThreadMetadataComment
+	PageInfo struct {
+		HasNextPage githubv4.Boolean
+		EndCursor   githubv4.String
+	}
+}
+
+type reviewThreadMetadataNode struct {
+	ID         githubv4.ID
+	IsResolved githubv4.Boolean
+	IsOutdated githubv4.Boolean
+	Path       githubv4.String
+	Line       *githubv4.Int
+	StartLine  *githubv4.Int
+	Comments   reviewThreadMetadataComments `graphql:"comments(first: 50)"`
+}
+
+// reviewThreadsMetadataPageQuery は GraphQL で PR レビュースレッドの本文なしページを取得します。
+type reviewThreadsMetadataPageQuery struct {
+	Repository struct {
+		PullRequest struct {
+			ReviewThreads struct {
+				Nodes    []reviewThreadMetadataNode
+				PageInfo struct {
+					HasNextPage githubv4.Boolean
+					EndCursor   githubv4.String
+				}
+			} `graphql:"reviewThreads(first: 100, after: $cursor)"`
+		} `graphql:"pullRequest(number: $pr)"`
+	} `graphql:"repository(owner: $owner, name: $repo)"`
+}
+
+type reviewThreadMetadataCommentsPageQuery struct {
+	Node struct {
+		PullRequestReviewThread struct {
+			Comments reviewThreadMetadataComments `graphql:"comments(first: 50, after: $cursor)"`
+		} `graphql:"... on PullRequestReviewThread"`
+	} `graphql:"node(id: $id)"`
 }
 
 // threadNodeQuery fetches a single thread's resolved status by global node ID.
@@ -567,9 +623,12 @@ type ResolveReviewThreadInput struct {
 
 // ThreadComment is a single comment within a review thread.
 type ThreadComment struct {
-	Author    string
-	Body      string
-	CreatedAt string
+	CommentID  string
+	Author     string
+	AuthorType string
+	URL        string
+	Body       string
+	CreatedAt  string
 }
 
 // ReviewThread is the parsed representation of a PR review thread.
@@ -583,6 +642,19 @@ type ReviewThread struct {
 	Comments   []ThreadComment
 }
 
+// ReviewThreadsOptions は GetReviewThreadsWithOptions が選択するフィールドを制御します。
+type ReviewThreadsOptions struct {
+	// IncludeBodies はレビュコメント本文を選択します。信頼できる投稿者の検証前に使う
+	// メタデータのみの射影では false に設定します。
+	IncludeBodies bool
+}
+
+// ReviewThreadsResult は GitHub から返された全ページと、消費した reviewThreads ページ数を含みます。
+type ReviewThreadsResult struct {
+	Threads   []ReviewThread
+	PageCount int
+}
+
 // ReplyResult holds the result of a reply-to-thread operation.
 type ReplyResult struct {
 	CommentID string
@@ -593,27 +665,58 @@ type ReplyResult struct {
 
 // GetReviewThreads fetches all review threads for a PR using GraphQL (paginated).
 func (c *Client) GetReviewThreads(ctx context.Context, owner, repo string, pr int) ([]ReviewThread, error) {
-	if pr <= 0 || pr > math.MaxInt32 {
-		return nil, fmt.Errorf("pr number out of valid range: %d", pr)
+	result, err := c.GetReviewThreadsWithOptions(ctx, owner, repo, pr, ReviewThreadsOptions{IncludeBodies: true})
+	if err != nil {
+		return nil, err
 	}
+	return result.Threads, nil
+}
+
+// GetReviewThreadsWithOptions はページネーション付き GraphQL 射影で PR の全レビュースレッドを取得します。
+// メタデータのみのモードではコメント本文を選択しません。
+func (c *Client) GetReviewThreadsWithOptions(
+	ctx context.Context,
+	owner, repo string,
+	pr int,
+	options ReviewThreadsOptions,
+) (ReviewThreadsResult, error) {
+	if pr <= 0 || pr > math.MaxInt32 {
+		return ReviewThreadsResult{}, fmt.Errorf("pr number out of valid range: %d", pr)
+	}
+	if !options.IncludeBodies {
+		return c.getReviewThreadMetadata(ctx, owner, repo, pr)
+	}
+	return c.getReviewThreadsWithBodies(ctx, owner, repo, pr)
+}
+
+func reviewThreadsVariables(owner, repo string, pr int) map[string]interface{} {
 	vars := map[string]interface{}{
 		"owner":  githubv4.String(owner),
 		"repo":   githubv4.String(repo),
 		"pr":     githubv4.Int(int32(pr)), //nolint:gosec // range checked above
 		"cursor": (*githubv4.String)(nil),
 	}
+	return vars
+}
 
+func (c *Client) getReviewThreadsWithBodies(ctx context.Context, owner, repo string, pr int) (ReviewThreadsResult, error) {
+	vars := reviewThreadsVariables(owner, repo, pr)
 	var allNodes []reviewThreadNode
+	pageCount := 0
 	for {
 		var q reviewThreadsPageQuery
 		if err := c.v4.Query(ctx, &q, vars); err != nil {
-			return nil, fmt.Errorf("graphql query failed: %w", err)
+			return ReviewThreadsResult{}, fmt.Errorf("graphql query failed: %w", err)
 		}
+		pageCount++
 		allNodes = append(allNodes, q.Repository.PullRequest.ReviewThreads.Nodes...)
 		if !bool(q.Repository.PullRequest.ReviewThreads.PageInfo.HasNextPage) {
 			break
 		}
 		cursor := q.Repository.PullRequest.ReviewThreads.PageInfo.EndCursor
+		if cursor == "" {
+			return ReviewThreadsResult{}, fmt.Errorf("graphql query returned hasNextPage=true with empty endCursor")
+		}
 		vars["cursor"] = &cursor
 	}
 
@@ -635,14 +738,114 @@ func (c *Client) GetReviewThreads(ctx context.Context, owner, repo string, pr in
 		}
 		for _, c := range n.Comments.Nodes {
 			t.Comments = append(t.Comments, ThreadComment{
-				Author:    string(c.Author.Login),
-				Body:      string(c.Body),
-				CreatedAt: c.CreatedAt.Format(time.RFC3339),
+				CommentID:  formatCommentID(c.DatabaseID),
+				Author:     string(c.Author.Login),
+				AuthorType: string(c.Author.TypeName),
+				URL:        string(c.URL),
+				Body:       string(c.Body),
+				CreatedAt:  c.CreatedAt.Format(time.RFC3339),
 			})
 		}
 		threads = append(threads, t)
 	}
-	return threads, nil
+	return ReviewThreadsResult{Threads: threads, PageCount: pageCount}, nil
+}
+
+func (c *Client) getReviewThreadMetadata(ctx context.Context, owner, repo string, pr int) (ReviewThreadsResult, error) {
+	vars := reviewThreadsVariables(owner, repo, pr)
+	var allNodes []reviewThreadMetadataNode
+	pageCount := 0
+	for {
+		var q reviewThreadsMetadataPageQuery
+		if err := c.v4.Query(ctx, &q, vars); err != nil {
+			return ReviewThreadsResult{}, fmt.Errorf("graphql metadata query failed: %w", err)
+		}
+		pageCount++
+		allNodes = append(allNodes, q.Repository.PullRequest.ReviewThreads.Nodes...)
+		if !bool(q.Repository.PullRequest.ReviewThreads.PageInfo.HasNextPage) {
+			break
+		}
+		cursor := q.Repository.PullRequest.ReviewThreads.PageInfo.EndCursor
+		if cursor == "" {
+			return ReviewThreadsResult{}, fmt.Errorf("graphql metadata query returned hasNextPage=true with empty endCursor")
+		}
+		vars["cursor"] = &cursor
+	}
+
+	threads := make([]ReviewThread, 0, len(allNodes))
+	for _, n := range allNodes {
+		t := ReviewThread{
+			ID:         fmt.Sprintf("%v", n.ID),
+			IsResolved: bool(n.IsResolved),
+			IsOutdated: bool(n.IsOutdated),
+			Path:       string(n.Path),
+		}
+		if n.Line != nil {
+			v := int32(*n.Line)
+			t.Line = &v
+		}
+		if n.StartLine != nil {
+			v := int32(*n.StartLine)
+			t.StartLine = &v
+		}
+		if err := c.appendReviewThreadMetadataComments(ctx, &t, n.ID, n.Comments); err != nil {
+			return ReviewThreadsResult{}, err
+		}
+		threads = append(threads, t)
+	}
+	return ReviewThreadsResult{Threads: threads, PageCount: pageCount}, nil
+}
+
+func (c *Client) appendReviewThreadMetadataComments(
+	ctx context.Context,
+	thread *ReviewThread,
+	threadID githubv4.ID,
+	comments reviewThreadMetadataComments,
+) error {
+	appendComments := func(page reviewThreadMetadataComments) {
+		for _, comment := range page.Nodes {
+			thread.Comments = append(thread.Comments, ThreadComment{
+				CommentID:  formatCommentID(comment.DatabaseID),
+				Author:     string(comment.Author.Login),
+				AuthorType: string(comment.Author.TypeName),
+				URL:        string(comment.URL),
+				CreatedAt:  comment.CreatedAt.Format(time.RFC3339),
+			})
+		}
+	}
+
+	appendComments(comments)
+	if !bool(comments.PageInfo.HasNextPage) {
+		return nil
+	}
+
+	vars := map[string]interface{}{
+		"id":     threadID,
+		"cursor": (*githubv4.String)(nil),
+	}
+	for {
+		var q reviewThreadMetadataCommentsPageQuery
+		if err := c.v4.Query(ctx, &q, vars); err != nil {
+			return fmt.Errorf("graphql metadata comments query failed: %w", err)
+		}
+		page := q.Node.PullRequestReviewThread.Comments
+		appendComments(page)
+		if !bool(page.PageInfo.HasNextPage) {
+			return nil
+		}
+		cursor := page.PageInfo.EndCursor
+		if cursor == "" {
+			return fmt.Errorf("graphql metadata comments query returned hasNextPage=true with empty endCursor")
+		}
+		vars["cursor"] = &cursor
+	}
+}
+
+func formatCommentID(databaseID int64) string {
+	if databaseID <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(databaseID, 10)
 }
 
 // IsThreadResolved checks whether a review thread is already resolved.

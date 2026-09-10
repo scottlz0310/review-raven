@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 追加
+
+- `get_review_threads` に `include_bodies: false` のメタデータのみの射影を追加しました。GraphQL query レベルでレビュースレッド本文を選択せず、コメント ID・投稿者メタデータ・URL・スレッドの解決状態・ページネーション完了情報を返します。([Issue #124](https://github.com/scottlz0310/review-raven/issues/124))
+
 ### 修正
 
 - stale-guard バグ報告の旧ディレクトリを参照するリンク5件を、現行の `internal/` 配下へ修正しました。

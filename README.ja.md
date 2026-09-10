@@ -37,6 +37,8 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 | `diagnose_github_token` | 現在のトークンの login と OAuth スコープ(`X-OAuth-Scopes` レスポンスヘッダー由来)を返す。`PERMISSION_DENIED` の原因切り分け用 |
 
+`get_review_threads` は任意の `include_bodies` input を受け付けます。後方互換性のため省略時は `true` です。`false` を指定すると、GitHub からレビュースレッド本文を選択しないメタデータのみの射影を返します。レスポンスにはコメント ID、投稿者メタデータ、URL、スレッドの解決状態、ページネーション完了情報が含まれます。
+
 セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [skill の所在・配置案内](docs/skills/README.md) を参照。アーキテクチャおよび Thread Owl・mcp-resource-subscriber との責務境界は [docs/architecture.ja.md](docs/architecture.ja.md) を参照。
 
 ## クイックスタート（Docker + mcp-gateway）

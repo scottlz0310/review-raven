@@ -37,6 +37,8 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 | `wait_for_copilot_review` | Legacy blocking wait (fallback) |
 | `diagnose_github_token` | Report the current token's login and OAuth scopes (from the `X-OAuth-Scopes` response header) for diagnosing `PERMISSION_DENIED` failures |
 
+`get_review_threads` accepts the optional `include_bodies` input. It defaults to `true` for compatibility; set it to `false` to receive a metadata-only projection that does not select review comment bodies from GitHub. The response includes comment IDs, author metadata, URLs, thread resolution state, and pagination completion information.
+
 See [docs/usage.md](docs/usage.md) for setup and operation. Tool-level details are in [docs/watch-tools.md](docs/watch-tools.md); skill location and installation are described in the [skill guide (Japanese)](docs/skills/README.md). For the architecture and responsibility boundaries with Thread Owl and mcp-resource-subscriber, see [docs/architecture.md](docs/architecture.md).
 
 ## Quick Start (Docker + mcp-gateway)
