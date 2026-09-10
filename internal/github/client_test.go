@@ -516,7 +516,7 @@ func TestGetCIStatus(t *testing.T) {
 		{
 			name: "same app, same name: latest (higher ID) wins; stale in_progress ignored",
 			checksJSON: makeChecksJSON(
-				makeRun(1, 0, "ci/build", "in_progress", ""),   // older: stale
+				makeRun(1, 0, "ci/build", "in_progress", ""),      // older: stale
 				makeRun(2, 0, "ci/build", "completed", "success"), // latest: success
 			),
 			want: CIStatus{OK: true},
@@ -928,5 +928,408 @@ func TestIsCopilotLoginCoversAllKnownIdentities(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("IsCopilotLogin(%q) = %v, want %v", tc.login, got, tc.want)
 		}
+	}
+}
+
+func TestGetReviewThreadsWithOptionsProjectionAndPagination(t *testing.T) {
+	tests := []struct {
+		name             string
+		options          ReviewThreadsOptions
+		wantBody         string
+		wantBodySelected bool
+	}{
+		{
+			name:             "metadata-only",
+			options:          ReviewThreadsOptions{IncludeBodies: false},
+			wantBodySelected: false,
+		},
+		{
+			name:             "full",
+			options:          ReviewThreadsOptions{IncludeBodies: true},
+			wantBody:         "secret review body",
+			wantBodySelected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var queries []string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var request struct {
+					Query     string                     `json:"query"`
+					Variables map[string]json.RawMessage `json:"variables"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Fatalf("decode GraphQL request: %v", err)
+				}
+				queries = append(queries, request.Query)
+
+				page := 1
+				if cursor := request.Variables["cursor"]; len(cursor) > 0 && string(cursor) != "null" {
+					page = 2
+				}
+				login := "thread-owl[bot]"
+				if page == 2 {
+					login = "scottlz0310-user"
+				}
+				comment := map[string]any{
+					"databaseId": 1000 + page,
+					"url":        fmt.Sprintf("https://github.com/example/review/%d", page),
+					"author": map[string]any{
+						"login":      login,
+						"__typename": "Bot",
+					},
+					"createdAt": "2026-09-10T00:00:00Z",
+				}
+				if tc.wantBodySelected {
+					comment["body"] = tc.wantBody
+				}
+				node := map[string]any{
+					"id":         fmt.Sprintf("PRRT_%d", page),
+					"isResolved": page == 2,
+					"isOutdated": false,
+					"path":       "main.go",
+					"line":       10 + page,
+					"startLine":  10 + page,
+					"comments": map[string]any{
+						"nodes": []any{comment},
+					},
+				}
+				response := map[string]any{
+					"data": map[string]any{
+						"repository": map[string]any{
+							"pullRequest": map[string]any{
+								"reviewThreads": map[string]any{
+									"nodes": []any{node},
+									"pageInfo": map[string]any{
+										"hasNextPage": page == 1,
+										"endCursor":   fmt.Sprintf("cursor-%d", page),
+									},
+								},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+			t.Cleanup(srv.Close)
+
+			client, err := NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
+			if err != nil {
+				t.Fatalf("NewWithHTTPClientAndURLFull() error = %v", err)
+			}
+			result, err := client.GetReviewThreadsWithOptions(context.Background(), "example", "repo", 1, tc.options)
+			if err != nil {
+				t.Fatalf("GetReviewThreadsWithOptions() error = %v", err)
+			}
+			if result.PageCount != 2 {
+				t.Fatalf("PageCount = %d, want 2", result.PageCount)
+			}
+			if len(result.Threads) != 2 {
+				t.Fatalf("len(Threads) = %d, want 2", len(result.Threads))
+			}
+			comment := result.Threads[0].Comments[0]
+			if comment.CommentID != "1001" {
+				t.Errorf("CommentID = %q, want 1001", comment.CommentID)
+			}
+			if comment.Author != "thread-owl[bot]" {
+				t.Errorf("Author = %q, want thread-owl[bot]", comment.Author)
+			}
+			if comment.AuthorType != "Bot" {
+				t.Errorf("AuthorType = %q, want Bot", comment.AuthorType)
+			}
+			if comment.URL == "" {
+				t.Error("URL is empty, want review comment URL")
+			}
+			if comment.Body != tc.wantBody {
+				t.Errorf("Body = %q, want %q", comment.Body, tc.wantBody)
+			}
+			for _, query := range queries {
+				selected := strings.Contains(query, "body")
+				if selected != tc.wantBodySelected {
+					t.Errorf("query body selection = %v, want %v; query = %s", selected, tc.wantBodySelected, query)
+				}
+			}
+		})
+	}
+}
+
+func TestGetReviewThreadsDefaultIncludesBodies(t *testing.T) {
+	var query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode GraphQL request: %v", err)
+		}
+		query = request.Query
+		response := map[string]any{
+			"data": map[string]any{
+				"repository": map[string]any{
+					"pullRequest": map[string]any{
+						"reviewThreads": map[string]any{
+							"nodes": []any{map[string]any{
+								"id":         "PRRT_default",
+								"isResolved": false,
+								"isOutdated": false,
+								"comments": map[string]any{
+									"nodes": []any{map[string]any{
+										"databaseId": 7,
+										"url":        "https://github.com/example/review/7",
+										"body":       "full review body",
+										"createdAt":  "2026-09-10T00:00:00Z",
+										"author": map[string]any{
+											"login":      "thread-owl[bot]",
+											"__typename": "Bot",
+										},
+									}},
+								},
+							}},
+							"pageInfo": map[string]any{
+								"hasNextPage": false,
+								"endCursor":   "cursor-1",
+							},
+						},
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewWithHTTPClientAndURLFull() error = %v", err)
+	}
+	threads, err := client.GetReviewThreads(context.Background(), "example", "repo", 1)
+	if err != nil {
+		t.Fatalf("GetReviewThreads() error = %v", err)
+	}
+	if len(threads) != 1 || len(threads[0].Comments) != 1 {
+		t.Fatalf("thread/comment counts = %d/%d, want 1/1", len(threads), len(threads[0].Comments))
+	}
+	if threads[0].Comments[0].Body != "full review body" {
+		t.Errorf("Body = %q, want full review body", threads[0].Comments[0].Body)
+	}
+	if !strings.Contains(query, "body") {
+		t.Errorf("default GraphQL query omitted body: %s", query)
+	}
+}
+
+func TestGetReviewThreadsMetadataPaginatesThreadComments(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Query     string                     `json:"query"`
+			Variables map[string]json.RawMessage `json:"variables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode GraphQL request: %v", err)
+		}
+		queries = append(queries, request.Query)
+		comment := func(id int) map[string]any {
+			return map[string]any{
+				"databaseId": id,
+				"url":        fmt.Sprintf("https://github.com/example/review/%d", id),
+				"createdAt":  "2026-09-10T00:00:00Z",
+				"author": map[string]any{
+					"login":      "thread-owl[bot]",
+					"__typename": "Bot",
+				},
+			}
+		}
+
+		var response map[string]any
+		if strings.Contains(request.Query, "reviewThreads") {
+			response = map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequest": map[string]any{
+							"reviewThreads": map[string]any{
+								"nodes": []any{map[string]any{
+									"id":         "PRRT_comments",
+									"isResolved": false,
+									"isOutdated": false,
+									"comments": map[string]any{
+										"nodes": []any{comment(1)},
+										"pageInfo": map[string]any{
+											"hasNextPage": true,
+											"endCursor":   "comment-cursor-1",
+										},
+									},
+								}},
+								"pageInfo": map[string]any{
+									"hasNextPage": false,
+									"endCursor":   "thread-cursor-1",
+								},
+							},
+						},
+					},
+				},
+			}
+		} else {
+			var cursor string
+			if err := json.Unmarshal(request.Variables["cursor"], &cursor); err != nil || cursor != "comment-cursor-1" {
+				http.Error(w, "unexpected comment cursor", http.StatusBadRequest)
+				return
+			}
+			response = map[string]any{
+				"data": map[string]any{
+					"node": map[string]any{
+						"comments": map[string]any{
+							"nodes": []any{comment(2)},
+							"pageInfo": map[string]any{
+								"hasNextPage": false,
+								"endCursor":   "comment-cursor-2",
+							},
+						},
+					},
+				},
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewWithHTTPClientAndURLFull() error = %v", err)
+	}
+	result, err := client.GetReviewThreadsWithOptions(context.Background(), "example", "repo", 1, ReviewThreadsOptions{})
+	if err != nil {
+		t.Fatalf("GetReviewThreadsWithOptions() error = %v", err)
+	}
+	if result.PageCount != 1 || len(result.Threads) != 1 || len(result.Threads[0].Comments) != 2 {
+		t.Fatalf("result pages/threads/comments = %d/%d/%d, want 1/1/2", result.PageCount, len(result.Threads), len(result.Threads[0].Comments))
+	}
+	if result.Threads[0].Comments[1].CommentID != "2" {
+		t.Errorf("second CommentID = %q, want 2", result.Threads[0].Comments[1].CommentID)
+	}
+	if len(queries) != 2 {
+		t.Fatalf("GraphQL query count = %d, want 2", len(queries))
+	}
+	for _, query := range queries {
+		if strings.Contains(query, "body") {
+			t.Errorf("metadata-only query selected body: %s", query)
+		}
+	}
+}
+
+func TestGetReviewThreadsMetadataRejectsEmptyCursor(t *testing.T) {
+	comment := map[string]any{
+		"databaseId": 1,
+		"url":        "https://github.com/example/review/1",
+		"createdAt":  "2026-09-10T00:00:00Z",
+		"author": map[string]any{
+			"login":      "thread-owl[bot]",
+			"__typename": "Bot",
+		},
+	}
+
+	tests := []struct {
+		name          string
+		threadPage    map[string]any
+		commentPage   map[string]any
+		wantErrorPart string
+	}{
+		{
+			name: "thread page",
+			threadPage: map[string]any{
+				"hasNextPage": true,
+				"endCursor":   "",
+			},
+			wantErrorPart: "graphql metadata query returned hasNextPage=true with empty endCursor",
+		},
+		{
+			name: "initial comment page",
+			threadPage: map[string]any{
+				"hasNextPage": false,
+				"endCursor":   "thread-cursor-1",
+			},
+			commentPage: map[string]any{
+				"hasNextPage": true,
+				"endCursor":   "",
+			},
+			wantErrorPart: "graphql metadata comments query returned hasNextPage=true with empty endCursor",
+		},
+		{
+			name: "nested comment page",
+			threadPage: map[string]any{
+				"hasNextPage": false,
+				"endCursor":   "thread-cursor-1",
+			},
+			commentPage: map[string]any{
+				"hasNextPage": true,
+				"endCursor":   "comment-cursor-1",
+			},
+			wantErrorPart: "graphql metadata comments query returned hasNextPage=true with empty endCursor",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var request struct {
+					Query string `json:"query"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Fatalf("decode GraphQL request: %v", err)
+				}
+
+				response := map[string]any{
+					"data": map[string]any{
+						"repository": map[string]any{
+							"pullRequest": map[string]any{
+								"reviewThreads": map[string]any{
+									"nodes":    []any{},
+									"pageInfo": tc.threadPage,
+								},
+							},
+						},
+					},
+				}
+				if tc.commentPage != nil {
+					if strings.Contains(request.Query, "reviewThreads") {
+						response["data"].(map[string]any)["repository"].(map[string]any)["pullRequest"].(map[string]any)["reviewThreads"].(map[string]any)["nodes"] = []any{map[string]any{
+							"id":         "PRRT_cursor",
+							"isResolved": false,
+							"isOutdated": false,
+							"comments": map[string]any{
+								"nodes":    []any{comment},
+								"pageInfo": tc.commentPage,
+							},
+						}}
+					} else {
+						response = map[string]any{
+							"data": map[string]any{
+								"node": map[string]any{
+									"comments": map[string]any{
+										"nodes":    []any{},
+										"pageInfo": map[string]any{"hasNextPage": true, "endCursor": ""},
+									},
+								},
+							},
+						}
+					}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+			t.Cleanup(srv.Close)
+
+			client, err := NewWithHTTPClientAndURLFull(srv.Client(), srv.URL, 30*time.Second)
+			if err != nil {
+				t.Fatalf("NewWithHTTPClientAndURLFull() error = %v", err)
+			}
+			_, err = client.GetReviewThreadsWithOptions(context.Background(), "example", "repo", 1, ReviewThreadsOptions{IncludeBodies: false})
+			if err == nil || !strings.Contains(err.Error(), tc.wantErrorPart) {
+				t.Fatalf("GetReviewThreadsWithOptions() error = %v, want %q", err, tc.wantErrorPart)
+			}
+		})
 	}
 }

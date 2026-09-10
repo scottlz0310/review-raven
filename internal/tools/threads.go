@@ -6,22 +6,28 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	ghclient "github.com/scottlz0310/review-raven/internal/github"
 )
 
 // ─── Tool 4: get_review_threads ───────────────────────────────────────────────
 
 // GetReviewThreadsInput is the input schema for get_review_threads.
 type GetReviewThreadsInput struct {
-	Owner string `json:"owner"`
-	Repo  string `json:"repo"`
-	PR    int    `json:"pr"`
+	Owner         string `json:"owner"`
+	Repo          string `json:"repo"`
+	PR            int    `json:"pr"`
+	IncludeBodies *bool  `json:"include_bodies,omitempty"`
 }
 
 // ThreadCommentOutput is a single comment within a thread result.
 type ThreadCommentOutput struct {
-	Author    string `json:"author"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"createdAt"`
+	CommentID  string  `json:"commentId"`
+	Author     string  `json:"author"`
+	AuthorType string  `json:"authorType"`
+	URL        string  `json:"url"`
+	Body       *string `json:"body,omitempty"`
+	CreatedAt  string  `json:"createdAt"`
 }
 
 // ThreadResult is the result for a single review thread.
@@ -39,15 +45,23 @@ type ThreadSummary struct {
 	Unresolved int `json:"unresolved"`
 }
 
+// ThreadPaginationOutput はサーバーが消費したページ数を示します。クライアントは返却前に
+// 全ページを巡回するため、成功レスポンスは常に complete です。
+type ThreadPaginationOutput struct {
+	PageCount int  `json:"pageCount"`
+	Complete  bool `json:"complete"`
+}
+
 // GetReviewThreadsOutput is the output schema for get_review_threads.
 type GetReviewThreadsOutput struct {
-	Threads []ThreadResult `json:"threads"`
-	Summary ThreadSummary  `json:"summary"`
+	Threads    []ThreadResult         `json:"threads"`
+	Summary    ThreadSummary          `json:"summary"`
+	Pagination ThreadPaginationOutput `json:"pagination"`
 }
 
 var getReviewThreadsTool = &mcp.Tool{
 	Name:        "get_review_threads",
-	Description: "PR のレビュースレッド一覧（Raw コメントデータ）を返す。各スレッドに PRRT_xxx 形式の ID を含む。分類（blocking/non-blocking/suggestion）は呼び出し元 LLM がルールファイルに基づいて判断する。",
+	Description: "PR のレビュースレッド一覧（Raw コメントデータ）を返す。各スレッドに PRRT_xxx 形式の ID を含む。include_bodies=false を指定すると、コメント本文を GitHub から選択しないメタデータのみの射影を返す（省略時は true）。分類（blocking/non-blocking/suggestion）は呼び出し元 LLM がルールファイルに基づいて判断する。",
 }
 
 func getReviewThreadsHandler(
@@ -65,7 +79,13 @@ func getReviewThreadsHandler(
 			return nil, GetReviewThreadsOutput{}, err
 		}
 
-		rawThreads, err := gh.GetReviewThreads(ctx, in.Owner, in.Repo, in.PR)
+		includeBodies := true
+		if in.IncludeBodies != nil {
+			includeBodies = *in.IncludeBodies
+		}
+		threadResult, err := gh.GetReviewThreadsWithOptions(ctx, in.Owner, in.Repo, in.PR, ghclient.ReviewThreadsOptions{
+			IncludeBodies: includeBodies,
+		})
 		if err != nil {
 			if result, ok := tryAuthResult(err); ok {
 				return result, GetReviewThreadsOutput{}, nil
@@ -73,19 +93,26 @@ func getReviewThreadsHandler(
 			return nil, GetReviewThreadsOutput{}, err
 		}
 
-		summary := ThreadSummary{Total: len(rawThreads)}
-		results := make([]ThreadResult, 0, len(rawThreads))
-		for _, t := range rawThreads {
+		summary := ThreadSummary{Total: len(threadResult.Threads)}
+		results := make([]ThreadResult, 0, len(threadResult.Threads))
+		for _, t := range threadResult.Threads {
 			if !t.IsResolved {
 				summary.Unresolved++
 			}
 			comments := make([]ThreadCommentOutput, 0, len(t.Comments))
 			for _, c := range t.Comments {
-				comments = append(comments, ThreadCommentOutput{
-					Author:    c.Author,
-					Body:      c.Body,
-					CreatedAt: c.CreatedAt,
-				})
+				comment := ThreadCommentOutput{
+					CommentID:  c.CommentID,
+					Author:     c.Author,
+					AuthorType: c.AuthorType,
+					URL:        c.URL,
+					CreatedAt:  c.CreatedAt,
+				}
+				if includeBodies {
+					body := c.Body
+					comment.Body = &body
+				}
+				comments = append(comments, comment)
 			}
 			results = append(results, ThreadResult{
 				ID:         t.ID,
@@ -96,7 +123,11 @@ func getReviewThreadsHandler(
 			})
 		}
 
-		return nil, GetReviewThreadsOutput{Threads: results, Summary: summary}, nil
+		return nil, GetReviewThreadsOutput{
+			Threads:    results,
+			Summary:    summary,
+			Pagination: ThreadPaginationOutput{PageCount: threadResult.PageCount, Complete: true},
+		}, nil
 	}
 }
 
