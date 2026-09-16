@@ -136,6 +136,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	RegisterWaitTool(srv, clientProvider, db)
 	RegisterRequestTool(srv, clientProvider, db)
 	RegisterThreadTools(srv, clientProvider)
+	RegisterListCheckRunsForSHATool(srv, clientProvider)
 	RegisterCycleTool(srv, clientProvider, db)
 	RegisterDiagnoseTokenTool(srv)
 

@@ -921,18 +921,74 @@ func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber i
 		return CIStatus{}, fmt.Errorf("PR #%d head SHA is empty", prNumber)
 	}
 
-	// Collect all check runs, deduplicating by (appID, name) to collapse reruns of the
-	// same check while preserving distinct checks that share a name across different apps.
-	latest := make(map[string]*github.CheckRun)
+	runs, err := c.ListCheckRunsForSHA(ctx, owner, repo, sha)
+	if err != nil {
+		return CIStatus{}, err
+	}
+
+	var pending, failed []string
+	for _, r := range runs.CheckRuns {
+		name := r.Name
+		if r.Status != "completed" {
+			pending = append(pending, name)
+			continue
+		}
+		switch r.Conclusion {
+		case "success", "skipped", "neutral":
+			// passing
+		default:
+			failed = append(failed, name)
+		}
+	}
+	sort.Strings(pending)
+	sort.Strings(failed)
+	return CIStatus{OK: len(pending) == 0 && len(failed) == 0, PendingChecks: pending, FailedChecks: failed}, nil
+}
+
+// CheckRun is a check run reported for a commit. No pass/fail judgement is applied.
+type CheckRun struct {
+	ID      int64
+	Name    string
+	HeadSHA string
+	Status  string
+	// Conclusion is empty while the run has not completed.
+	Conclusion string
+	AppID      int64
+	AppSlug    string
+	HTMLURL    string
+}
+
+// CheckRunsResult holds the check runs for a commit after walking every page.
+type CheckRunsResult struct {
+	// CheckRuns holds the latest (highest ID) run per (app ID, name) pair,
+	// sorted by name and then app ID.
+	CheckRuns []CheckRun
+	// RawCount is the number of runs GitHub returned before deduplication.
+	RawCount  int
+	PageCount int
+}
+
+// ListCheckRunsForSHA returns the check runs for a fixed commit SHA across all
+// pages. Runs are deduplicated by (appID, name), keeping the latest (highest ID)
+// run, which collapses reruns of the same check while preserving distinct checks
+// that happen to share a name across different GitHub Apps.
+func (c *Client) ListCheckRunsForSHA(ctx context.Context, owner, repo, sha string) (CheckRunsResult, error) {
+	type checkKey struct {
+		appID int64
+		name  string
+	}
+	latest := make(map[checkKey]*github.CheckRun)
+	out := CheckRunsResult{}
 	opts := &github.ListCheckRunsOptions{ListOptions: github.ListOptions{PerPage: 100}}
 	for {
 		result, resp, err := c.gh.Checks.ListCheckRunsForRef(ctx, owner, repo, sha, opts)
 		if err != nil {
-			return CIStatus{}, fmt.Errorf("failed to list check runs: %w", err)
+			return CheckRunsResult{}, fmt.Errorf("failed to list check runs for %s: %w", sha, err)
 		}
-		for i := range result.CheckRuns {
-			r := result.CheckRuns[i]
-			key := strconv.FormatInt(r.GetApp().GetID(), 10) + ":" + r.GetName()
+		out.PageCount++
+		out.RawCount += len(result.CheckRuns)
+		for _, r := range result.CheckRuns {
+			key := checkKey{appID: r.GetApp().GetID(), name: r.GetName()}
 			if existing, ok := latest[key]; !ok || r.GetID() > existing.GetID() {
 				latest[key] = r
 			}
@@ -943,23 +999,27 @@ func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber i
 		opts.Page = resp.NextPage
 	}
 
-	var pending, failed []string
+	out.CheckRuns = make([]CheckRun, 0, len(latest))
 	for _, r := range latest {
-		name := r.GetName()
-		if r.GetStatus() != "completed" {
-			pending = append(pending, name)
-			continue
-		}
-		switch r.GetConclusion() {
-		case "success", "skipped", "neutral":
-			// passing
-		default:
-			failed = append(failed, name)
-		}
+		out.CheckRuns = append(out.CheckRuns, CheckRun{
+			ID:         r.GetID(),
+			Name:       r.GetName(),
+			HeadSHA:    r.GetHeadSHA(),
+			Status:     r.GetStatus(),
+			Conclusion: r.GetConclusion(),
+			AppID:      r.GetApp().GetID(),
+			AppSlug:    r.GetApp().GetSlug(),
+			HTMLURL:    r.GetHTMLURL(),
+		})
 	}
-	sort.Strings(pending)
-	sort.Strings(failed)
-	return CIStatus{OK: len(pending) == 0 && len(failed) == 0, PendingChecks: pending, FailedChecks: failed}, nil
+	sort.Slice(out.CheckRuns, func(i, j int) bool {
+		a, b := out.CheckRuns[i], out.CheckRuns[j]
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.AppID < b.AppID
+	})
+	return out, nil
 }
 
 // ResolveThread resolves a review thread. Returns true if it was already resolved before the call.

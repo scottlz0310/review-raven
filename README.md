@@ -34,10 +34,13 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 | `reply_to_review_thread` | Post a reply to a thread |
 | `resolve_review_thread` | Mark a thread as resolved |
 | `reply_and_resolve_review_thread` | Reply then resolve in sequence |
+| `list_check_runs_for_sha` | List check runs for a pinned commit SHA (raw data; pass/fail judgement is left to the caller) |
 | `wait_for_copilot_review` | Legacy blocking wait (fallback) |
 | `diagnose_github_token` | Report the current token's login and OAuth scopes (from the `X-OAuth-Scopes` response header) for diagnosing `PERMISSION_DENIED` failures |
 
 `get_review_threads` accepts the optional `include_bodies` input. It defaults to `true` for compatibility; set it to `false` to receive a metadata-only projection that does not select review comment bodies from GitHub. The response includes comment IDs, author metadata, URLs, thread resolution state, and pagination completion information.
+
+`list_check_runs_for_sha` takes `owner`, `repo`, and `sha`, which must be a full 40-character lowercase hex commit SHA. It rejects PR numbers and branch names so the target cannot move between calls. It reads every page and returns each run's `head_sha`, `status`, `conclusion`, `app`, and `html_url`, so callers can check that CI results belong to the commit they pinned. Reruns are collapsed to the run with the highest ID for each (app ID, name) pair, and `deduplication` reports this strategy with the count before deduplication. The tool does not decide success or failure.
 
 See [docs/usage.md](docs/usage.md) for setup and operation. Tool-level details are in [docs/watch-tools.md](docs/watch-tools.md); skill location and installation are described in the [skill guide (Japanese)](docs/skills/README.md). For the architecture and responsibility boundaries with Thread Owl and mcp-resource-subscriber, see [docs/architecture.md](docs/architecture.md).
 

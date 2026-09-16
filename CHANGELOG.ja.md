@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 追加
+
+- read-only の `list_check_runs_for_sha` ツールを追加しました。PR 番号ではなくコミット SHA を入力に取り、全ページ分の check run について `head_sha`・`status`・`conclusion`・`app`・`html_url` を返します。レビュー skill は `gh api` を使わずに、固定した head SHA と CI 結果を照合できます。再実行 run は (app ID, name) ごとに最新の run に集約し、重複排除の方式と重複排除前の件数を出力に示します。`get_pr_review_cycle_status` の `ci_ok` は従来の挙動のままです。([Issue #129](https://github.com/scottlz0310/review-raven/issues/129))
+
 ## [0.4.0] - 2026-09-10
 
 ### 追加

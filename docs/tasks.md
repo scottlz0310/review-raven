@@ -4,6 +4,8 @@
 
 ## 実装済み（未マージ）
 
+- [x] [#129](https://github.com/scottlz0310/review-raven/issues/129): コミット SHA を入力に check runs（`head_sha` / `status` / `conclusion` / `app`）を返す read-only ツール `list_check_runs_for_sha` を追加し、skill の CI 判定で SHA 照合を MCP から行えるようにした。
+
 - [x] [#124](https://github.com/scottlz0310/review-raven/issues/124): `get_review_threads` に本文を選択しないメタデータ射影 API を追加し、投稿者ゲートの事前検査を MCP から利用できるようにした。
 
 - [x] #123 一周目レビュー対応: 英語版ドキュメントの日本語混入を修正し、stale-guard バグ報告の既存参照切れ5件を解消。
