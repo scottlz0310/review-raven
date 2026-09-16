@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,8 @@ import (
 
 	"github.com/google/go-github/v89/github"
 	"github.com/shurcooL/githubv4"
+
+	"github.com/scottlz0310/review-raven/internal/autherr"
 )
 
 // newReview creates a PullRequestReview with the given state and optional submittedAt.
@@ -657,6 +661,148 @@ func TestGetCIStatus(t *testing.T) {
 		}
 		if join(pagesSeen, ",") != "1,2" {
 			t.Fatalf("GetCIStatus() did not request all pages, got pages %q, want %q", join(pagesSeen, ","), "1,2")
+		}
+	})
+}
+
+func TestListCheckRunsForSHA(t *testing.T) {
+	const (
+		owner = "owner"
+		repo  = "repo"
+		sha   = "0123456789abcdef0123456789abcdef01234567"
+	)
+
+	makeRun := func(id, appID int64, name, status, conclusion string) string {
+		return fmt.Sprintf(`{"id":%d,"name":%q,"head_sha":%q,"status":%q,"conclusion":%q,"html_url":"https://github.com/owner/repo/runs/%d","app":{"id":%d,"slug":"app-%d"}}`,
+			id, name, sha, status, conclusion, id, appID, appID)
+	}
+	makePage := func(runs ...string) string {
+		return fmt.Sprintf(`{"total_count":%d,"check_runs":[%s]}`, len(runs), join(runs, ","))
+	}
+	wantRun := func(id, appID int64, name, status, conclusion string) CheckRun {
+		return CheckRun{
+			ID:         id,
+			Name:       name,
+			HeadSHA:    sha,
+			Status:     status,
+			Conclusion: conclusion,
+			AppID:      appID,
+			AppSlug:    fmt.Sprintf("app-%d", appID),
+			HTMLURL:    fmt.Sprintf("https://github.com/owner/repo/runs/%d", id),
+		}
+	}
+
+	tests := []struct {
+		name  string
+		pages []string
+		want  CheckRunsResult
+	}{
+		{
+			name:  "empty result",
+			pages: []string{makePage()},
+			want:  CheckRunsResult{CheckRuns: []CheckRun{}, RawCount: 0, PageCount: 1},
+		},
+		{
+			name: "fields are mapped and output is sorted by name then app ID",
+			pages: []string{makePage(
+				makeRun(3, 300, "test", "in_progress", ""),
+				makeRun(2, 200, "build", "completed", "skipped"),
+				makeRun(1, 100, "build", "completed", "success"),
+			)},
+			want: CheckRunsResult{
+				CheckRuns: []CheckRun{
+					wantRun(1, 100, "build", "completed", "success"),
+					wantRun(2, 200, "build", "completed", "skipped"),
+					wantRun(3, 300, "test", "in_progress", ""),
+				},
+				RawCount:  3,
+				PageCount: 1,
+			},
+		},
+		{
+			name: "rerun on the same app keeps the highest ID regardless of order",
+			pages: []string{makePage(
+				makeRun(5, 100, "build", "completed", "success"),
+				makeRun(4, 100, "build", "completed", "failure"),
+			)},
+			want: CheckRunsResult{
+				CheckRuns: []CheckRun{wantRun(5, 100, "build", "completed", "success")},
+				RawCount:  2,
+				PageCount: 1,
+			},
+		},
+		{
+			name: "rerun split across pages is deduplicated after all pages are read",
+			pages: []string{
+				makePage(makeRun(1, 100, "build", "completed", "failure"), makeRun(2, 100, "lint", "completed", "success")),
+				makePage(makeRun(3, 100, "build", "completed", "success")),
+			},
+			want: CheckRunsResult{
+				CheckRuns: []CheckRun{
+					wantRun(3, 100, "build", "completed", "success"),
+					wantRun(2, 100, "lint", "completed", "success"),
+				},
+				RawCount:  3,
+				PageCount: 2,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var pagesSeen []string
+			mux := http.NewServeMux()
+			mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, sha), func(w http.ResponseWriter, r *http.Request) {
+				page := r.URL.Query().Get("page")
+				if page == "" {
+					page = "1"
+				}
+				pagesSeen = append(pagesSeen, page)
+				idx, err := strconv.Atoi(page)
+				if err != nil || idx < 1 || idx > len(tt.pages) {
+					http.Error(w, "unexpected page", http.StatusBadRequest)
+					return
+				}
+				if idx < len(tt.pages) {
+					w.Header().Set("Link", fmt.Sprintf(`<http://%s/repos/%s/%s/commits/%s/check-runs?page=%d>; rel="next"`, r.Host, owner, repo, sha, idx+1))
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(w, tt.pages[idx-1])
+			})
+
+			c, teardown := newTestGHClient(mux)
+			defer teardown()
+
+			got, err := c.ListCheckRunsForSHA(context.Background(), owner, repo, sha)
+			if err != nil {
+				t.Fatalf("ListCheckRunsForSHA() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ListCheckRunsForSHA() = %+v, want %+v", got, tt.want)
+			}
+			if len(pagesSeen) != len(tt.pages) {
+				t.Errorf("requested pages %v, want %d pages", pagesSeen, len(tt.pages))
+			}
+		})
+	}
+
+	t.Run("401 is returned as a classifiable GitHub error", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, sha), func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = fmt.Fprint(w, `{"message":"Bad credentials"}`)
+		})
+
+		c, teardown := newTestGHClient(mux)
+		defer teardown()
+
+		_, err := c.ListCheckRunsForSHA(context.Background(), owner, repo, sha)
+		if err == nil {
+			t.Fatal("ListCheckRunsForSHA() error = nil, want 401 error")
+		}
+		if ae := ClassifyGitHubError(err); ae == nil || ae.ErrorType != autherr.REAUTH_REQUIRED {
+			t.Fatalf("ClassifyGitHubError() = %+v, want REAUTH_REQUIRED", ae)
 		}
 	})
 }

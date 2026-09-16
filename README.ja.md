@@ -34,10 +34,13 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `reply_to_review_thread` | スレッドに返信 |
 | `resolve_review_thread` | スレッドを解決済みにする |
 | `reply_and_resolve_review_thread` | 返信→解決を順次実行 |
+| `list_check_runs_for_sha` | 固定したコミット SHA の check runs 一覧（Raw データ。合否判定は呼び出し元で行う） |
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 | `diagnose_github_token` | 現在のトークンの login と OAuth スコープ(`X-OAuth-Scopes` レスポンスヘッダー由来)を返す。`PERMISSION_DENIED` の原因切り分け用 |
 
 `get_review_threads` は任意の `include_bodies` input を受け付けます。後方互換性のため省略時は `true` です。`false` を指定すると、GitHub からレビュースレッド本文を選択しないメタデータのみの射影を返します。レスポンスにはコメント ID、投稿者メタデータ、URL、スレッドの解決状態、ページネーション完了情報が含まれます。
+
+`list_check_runs_for_sha` は `owner`・`repo`・`sha` を受け取ります。`sha` は 40 桁の小文字 16 進数のコミット SHA に限り、呼び出しの間に対象が動かないよう PR 番号や branch 名は受け付けません。全ページを取得して各 run の `head_sha`・`status`・`conclusion`・`app`・`html_url` を返すため、呼び出し元は CI 結果が固定したコミットのものか照合できます。再実行 run は (app ID, name) ごとに ID が最大の run に集約し、`deduplication` にその方式と重複排除前の件数を示します。合否判定は行いません。
 
 セットアップと運用は [docs/usage.ja.md](docs/usage.ja.md) を参照。ツール単位の詳細は [docs/watch-tools.ja.md](docs/watch-tools.ja.md) と [skill の所在・配置案内](docs/skills/README.md) を参照。アーキテクチャおよび Thread Owl・mcp-resource-subscriber との責務境界は [docs/architecture.ja.md](docs/architecture.ja.md) を参照。
 

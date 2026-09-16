@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the read-only `list_check_runs_for_sha` tool. It takes a full commit SHA instead of a PR number and returns each check run's `head_sha`, `status`, `conclusion`, `app`, and `html_url` across all pages. Review skills can use it to check CI results against a pinned head SHA without `gh api`. Reruns are collapsed to the latest run for each (app ID, name) pair, and the response reports the deduplication strategy and the count before deduplication. `get_pr_review_cycle_status` keeps its existing `ci_ok` behavior. ([Issue #129](https://github.com/scottlz0310/review-raven/issues/129))
+
 ## [0.4.0] - 2026-09-10
 
 ### Added
