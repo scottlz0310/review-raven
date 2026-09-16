@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-16
+
 ### 追加
 
 - read-only の `list_check_runs_for_sha` ツールを追加しました。PR 番号ではなくコミット SHA を入力に取り、全ページ分の check run について `head_sha`・`status`・`conclusion`・`app`・`html_url` を返します。レビュー skill は `gh api` を使わずに、固定した head SHA と CI 結果を照合できます。再実行 run は (app ID, name) ごとに最新の run に集約し、重複排除の方式と重複排除前の件数を出力に示します。`get_pr_review_cycle_status` の `ci_ok` は従来の挙動のままです。([Issue #129](https://github.com/scottlz0310/review-raven/issues/129))
@@ -196,7 +198,8 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
