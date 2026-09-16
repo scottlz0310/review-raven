@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-16
+
 ### Added
 
 - Added the read-only `list_check_runs_for_sha` tool. It takes a full commit SHA instead of a PR number and returns each check run's `head_sha`, `status`, `conclusion`, `app`, and `html_url` across all pages. Review skills can use it to check CI results against a pinned head SHA without `gh api`. Reruns are collapsed to the latest run for each (app ID, name) pair, and the response reports the deduplication strategy and the count before deduplication. `get_pr_review_cycle_status` keeps its existing `ci_ok` behavior. ([Issue #129](https://github.com/scottlz0310/review-raven/issues/129))
@@ -196,7 +198,8 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/scottlz0310/review-raven/compare/v0.1.0...v0.2.0
