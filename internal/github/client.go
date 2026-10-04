@@ -1079,7 +1079,7 @@ func getTokenDiagnostics(ctx context.Context, client *github.Client) (TokenDiagn
 	}
 	var scopes []string
 	if resp != nil && resp.Response != nil {
-		if raw := resp.Response.Header.Get("X-OAuth-Scopes"); raw != "" {
+		if raw := resp.Header.Get("X-OAuth-Scopes"); raw != "" {
 			for _, s := range strings.Split(raw, ",") {
 				if s = strings.TrimSpace(s); s != "" {
 					scopes = append(scopes, s)

@@ -376,8 +376,8 @@ func TestWatchResourceHandlerScopesWatchIDByLogin(t *testing.T) {
 	if !errors.As(err, &rpcErr) {
 		t.Fatalf("ReadResource() error type = %T, want *jsonrpc.Error; err = %v", err, err)
 	}
-	if rpcErr.Code != mcp.CodeResourceNotFound {
-		t.Errorf("ReadResource() error code = %d, want %d (CodeResourceNotFound)", rpcErr.Code, mcp.CodeResourceNotFound)
+	if rpcErr.Code != jsonrpc.CodeInvalidParams {
+		t.Errorf("ReadResource() error code = %d, want %d (CodeInvalidParams)", rpcErr.Code, jsonrpc.CodeInvalidParams)
 	}
 }
 
