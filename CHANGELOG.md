@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the read-only `get_trusted_comment_authors` tool and the `TRUSTED_COMMENT_AUTHORS` environment variable (comma-separated GitHub logins). The tool publishes the allowlist of PR comment authors whose text may enter an agent's context, so the allowlist lives in deployment configuration instead of being hard-coded in a skill (#134). Logins are normalized like the reviewed skill's `normalize_login` (ASCII-lowercased, one trailing `[bot]` removed) and de-duplicated; a malformed entry (e.g. a wildcard) stops startup. When the variable is unset, the tool returns the `TRUSTED_AUTHORS_NOT_CONFIGURED` error instead of an empty list, so a caller cannot read "nobody is trusted" as "nothing to check" (fail-closed).
+
 ## [0.5.0] - 2026-09-16
 
 ### Added

@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- read-only のツール `get_trusted_comment_authors` と、環境変数 `TRUSTED_COMMENT_AUTHORS`（GitHub の login のカンマ区切り）を追加した。ツールは、PR のコメントの本文を、エージェントの文脈に入れてよい投稿者の許可リストを公開する。許可リストを、skill への直書きではなく、配備の設定に置くため（#134）。login は、reviewed skill の `normalize_login` と同じ規則で正規化し（ASCII の小文字化と、末尾の `[bot]` の 1 回だけの除去）、重複を除く。不正な要素（ワイルドカードなど）があると、起動を止める。未設定のときは、空のリストではなく、エラー `TRUSTED_AUTHORS_NOT_CONFIGURED` を返す。呼び出し側が、「誰も信頼しない」を「確認することがない」と取り違えないようにする（fail-closed）。
+
 ## [0.5.0] - 2026-09-16
 
 ### 追加

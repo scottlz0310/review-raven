@@ -37,6 +37,7 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 | `list_check_runs_for_sha` | List check runs for a pinned commit SHA (raw data; pass/fail judgement is left to the caller) |
 | `wait_for_copilot_review` | Legacy blocking wait (fallback) |
 | `diagnose_github_token` | Report the current token's login and OAuth scopes (from the `X-OAuth-Scopes` response header) for diagnosing `PERMISSION_DENIED` failures |
+| `get_trusted_comment_authors` | Return the allowlist of PR comment authors whose text may enter an agent's context (the server's `TRUSTED_COMMENT_AUTHORS`). Read-only; fails with `TRUSTED_AUTHORS_NOT_CONFIGURED` when unset |
 
 `get_review_threads` accepts the optional `include_bodies` input. It defaults to `true` for compatibility; set it to `false` to receive a metadata-only projection that does not select review comment bodies from GitHub. The response includes comment IDs, author metadata, URLs, thread resolution state, and pagination completion information.
 
@@ -82,6 +83,7 @@ See [docs/usage.md](docs/usage.md) for the full setup guide.
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
 | `SQLITE_PATH` | | `/data/review-raven.db` | Path to the watch-state database |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | Grace period after a review request before treating the review as in-progress (seconds) |
+| `TRUSTED_COMMENT_AUTHORS` | | _(unset)_ | Comma-separated GitHub logins whose PR comments may enter an agent's context (`name` or `name[bot]`; case-insensitive). Published by `get_trusted_comment_authors`. An invalid entry (e.g. a wildcard) stops startup. When unset, the tool fails closed with `TRUSTED_AUTHORS_NOT_CONFIGURED` |
 | `REVIEW_RAVEN_GATEWAY_INTERNAL_URL` | | _(unset)_ | **Phase B** — Full URL of the mcp-gateway internal whoami endpoint (e.g. `http://127.0.0.1:8080/internal/v1/whoami`). Must be a loopback address. Set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` or leave both unset. |
 | `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` | | _(unset)_ | **Phase B** — Shared bearer secret for the gateway internal API. Must be set together with `REVIEW_RAVEN_GATEWAY_INTERNAL_URL`. |
 

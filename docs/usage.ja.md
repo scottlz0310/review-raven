@@ -85,6 +85,12 @@ SQLITE_PATH=/data/review-raven.db
 IN_PROGRESS_THRESHOLD_SEC=30
 ```
 
+`TRUSTED_COMMENT_AUTHORS` には既定値がない。PR のコメントの本文を、エージェントの文脈に入れてよい GitHub の login のカンマ区切りで、`get_trusted_comment_authors` が公開する。未設定のときは、そのツールが `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する（fail-closed）:
+
+```env
+TRUSTED_COMMENT_AUTHORS=your-login,thread-owl,codecov
+```
+
 ### health check
 
 ```bash

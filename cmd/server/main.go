@@ -18,6 +18,7 @@ import (
 	"github.com/scottlz0310/review-raven/internal/middleware"
 	"github.com/scottlz0310/review-raven/internal/store"
 	"github.com/scottlz0310/review-raven/internal/tools"
+	"github.com/scottlz0310/review-raven/internal/trustedauthors"
 	"github.com/scottlz0310/review-raven/internal/watch"
 )
 
@@ -62,7 +63,12 @@ func main() {
 
 	// MCP endpoints (auth required) — Streamable HTTP transport (stateless, MCP 2026-07-28)
 	threshold := time.Duration(cfg.inProgressThresholdSec) * time.Second
-	builderOpts := tools.BuilderOptions{}
+	builderOpts := tools.BuilderOptions{TrustedCommentAuthors: cfg.trustedCommentAuthors}
+	if len(cfg.trustedCommentAuthors) == 0 {
+		slog.Warn("TRUSTED_COMMENT_AUTHORS is not set: get_trusted_comment_authors returns an error, so no comment author is trusted. Set TRUSTED_COMMENT_AUTHORS to the GitHub logins whose comments may be read (comma-separated).")
+	} else {
+		slog.Info("trusted comment authors configured", "count", len(cfg.trustedCommentAuthors))
+	}
 	if cfg.gatewayInternalURL != "" {
 		slog.Info("phase B gateway delegated background access enabled",
 			"endpoint", cfg.gatewayInternalURL)
@@ -101,6 +107,7 @@ type config struct {
 	inProgressThresholdSec int
 	gatewayInternalURL     string
 	gatewayInternalSecret  string
+	trustedCommentAuthors  []string
 }
 
 func loadConfig() config {
@@ -129,6 +136,13 @@ func loadConfig() config {
 			os.Exit(1)
 		}
 	}
+	// Fail-fast: a malformed entry (wildcard, typo) must not silently weaken or
+	// break the comment-author gate that reads this list.
+	trusted, err := trustedauthors.Parse(os.Getenv("TRUSTED_COMMENT_AUTHORS"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "review-raven: invalid TRUSTED_COMMENT_AUTHORS: %v\n", err)
+		os.Exit(1)
+	}
 	return config{
 		port:                   getEnv("MCP_PORT", "8083"),
 		bindAddr:               getEnv("BIND_ADDR", "127.0.0.1"),
@@ -137,6 +151,7 @@ func loadConfig() config {
 		inProgressThresholdSec: getEnvInt("IN_PROGRESS_THRESHOLD_SEC", 30),
 		gatewayInternalURL:     gatewayURL,
 		gatewayInternalSecret:  gatewaySecret,
+		trustedCommentAuthors:  trusted,
 	}
 }
 
