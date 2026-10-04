@@ -85,6 +85,12 @@ SQLITE_PATH=/data/review-raven.db
 IN_PROGRESS_THRESHOLD_SEC=30
 ```
 
+`TRUSTED_COMMENT_AUTHORS` has no default. It is the comma-separated list of GitHub logins whose PR comments may enter an agent's context, and `get_trusted_comment_authors` publishes it. Without it, that tool fails closed with `TRUSTED_AUTHORS_NOT_CONFIGURED`:
+
+```env
+TRUSTED_COMMENT_AUTHORS=your-login,thread-owl,codecov
+```
+
 ### Check health
 
 ```bash

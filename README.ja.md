@@ -37,6 +37,7 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `list_check_runs_for_sha` | 固定したコミット SHA の check runs 一覧（Raw データ。合否判定は呼び出し元で行う） |
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 | `diagnose_github_token` | 現在のトークンの login と OAuth スコープ(`X-OAuth-Scopes` レスポンスヘッダー由来)を返す。`PERMISSION_DENIED` の原因切り分け用 |
+| `get_trusted_comment_authors` | PR のコメントの本文を、エージェントの文脈に入れてよい投稿者の許可リスト（サーバーの `TRUSTED_COMMENT_AUTHORS`）を返す。read-only。未設定のときは `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する |
 
 `get_review_threads` は任意の `include_bodies` input を受け付けます。後方互換性のため省略時は `true` です。`false` を指定すると、GitHub からレビュースレッド本文を選択しないメタデータのみの射影を返します。レスポンスにはコメント ID、投稿者メタデータ、URL、スレッドの解決状態、ページネーション完了情報が含まれます。
 
@@ -82,6 +83,7 @@ mcp-gateway で、**gateway から到達可能**なこのサーバーの内部�
 | `LOG_LEVEL` | | `info` | `debug` / `info` / `warn` / `error` |
 | `SQLITE_PATH` | | `/data/review-raven.db` | watch state DB のパス |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
+| `TRUSTED_COMMENT_AUTHORS` | | _(未設定)_ | PR のコメントの本文を、エージェントの文脈に入れてよい GitHub の login（カンマ区切り。`name` でも `name[bot]` でもよい。大文字小文字は区別しない）。`get_trusted_comment_authors` が公開する。不正な要素（ワイルドカードなど）があると、起動を止める。未設定のときは、ツールが `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する（fail-closed） |
 
 **非対応**（旧 `copilot-review-mcp` 系統で削除済み）: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
 

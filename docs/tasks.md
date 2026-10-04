@@ -4,6 +4,8 @@
 
 ## 実装済み（未マージ）
 
+- [x] [#134](https://github.com/scottlz0310/review-raven/issues/134): 必須コメント投稿者の許可リストを、環境変数 `TRUSTED_COMMENT_AUTHORS` から read-only のツール `get_trusted_comment_authors` で公開する（reviewed skill の直書きの廃止の段 1）。未設定は `TRUSTED_AUTHORS_NOT_CONFIGURED` で fail-closed、不正な要素は起動時に fail-fast。
+
 - [x] [#129](https://github.com/scottlz0310/review-raven/issues/129): コミット SHA を入力に check runs（`head_sha` / `status` / `conclusion` / `app`）を返す read-only ツール `list_check_runs_for_sha` を追加し、skill の CI 判定で SHA 照合を MCP から行えるようにした。
 
 - [x] [#124](https://github.com/scottlz0310/review-raven/issues/124): `get_review_threads` に本文を選択しないメタデータ射影 API を追加し、投稿者ゲートの事前検査を MCP から利用できるようにした。

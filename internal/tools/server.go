@@ -64,6 +64,11 @@ type BuilderOptions struct {
 	// GitHub session token and login. Used by Phase B delegated background
 	// access (see scottlz0310/review-raven#29).
 	GatewayClientFactory func(ctx context.Context, token, login string) watch.ReviewDataFetcher
+
+	// TrustedCommentAuthors is the normalized allowlist of PR comment authors
+	// (the TRUSTED_COMMENT_AUTHORS environment variable). It is published by
+	// get_trusted_comment_authors; an empty list makes that tool fail closed.
+	TrustedCommentAuthors []string
 }
 
 // BuildStreamableHandler returns a handler that serves MCP over Streamable HTTP
@@ -139,6 +144,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	RegisterListCheckRunsForSHATool(srv, clientProvider)
 	RegisterCycleTool(srv, clientProvider, db)
 	RegisterDiagnoseTokenTool(srv)
+	RegisterTrustedCommentAuthorsTool(srv, opts.TrustedCommentAuthors)
 
 	streamableHandler := &StreamableHandler{
 		watchManager: watchManager,
