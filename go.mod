@@ -1,6 +1,6 @@
 module github.com/scottlz0310/review-raven
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/google/go-github/v89 v89.0.0
