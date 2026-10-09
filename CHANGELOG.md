@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-09
+
 ### Changed
 
 - 専用Appの配備手順を標準Compose・make運用へ同期し、V4実測結果とinstallation権限の対象範囲を記録した。
