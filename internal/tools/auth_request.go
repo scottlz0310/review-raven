@@ -15,6 +15,24 @@ import (
 
 type githubClientProvider func(context.Context, *mcp.CallToolRequest) (*ghclient.Client, error)
 
+type InstallationTokens interface {
+	Token(context.Context) (string, error)
+	Invalidate(string)
+}
+
+func newInstallationClientProvider(threshold time.Duration, source InstallationTokens) githubClientProvider {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*ghclient.Client, error) {
+		if loginFromToolRequest(ctx, req) == "" || tokenFromToolRequest(ctx, req) == "" {
+			return nil, autherr.NewAuthRequired()
+		}
+		token, err := source.Token(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return ghclient.NewClient(ctx, token, threshold, source.Invalidate), nil
+	}
+}
+
 func newGitHubClientProvider(threshold time.Duration, invalidate func(string)) githubClientProvider {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*ghclient.Client, error) {
 		token := tokenFromToolRequest(ctx, req)

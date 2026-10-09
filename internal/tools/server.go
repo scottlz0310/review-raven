@@ -59,6 +59,9 @@ func (h *StreamableHandler) Close() {
 // BuilderOptions configures optional behaviors for BuildStreamableHandlerWithOptions.
 // Unset fields fall back to defaults that preserve current behavior.
 type BuilderOptions struct {
+	// 専用Appモードはこのsourceを使い、Copilot系・watchを登録しない。
+	InstallationTokens InstallationTokens
+
 	// GatewayClientFactory, if non-nil, overrides the default static-token
 	// watch ClientFactory. It is invoked per watch with the authenticated
 	// GitHub session token and login. Used by Phase B delegated background
@@ -74,7 +77,7 @@ type BuilderOptions struct {
 // BuildStreamableHandler returns a handler that serves MCP over Streamable HTTP
 // in stateless mode (per-request temporary sessions, no Mcp-Session-Id), and
 // only over protocol 2026-07-28 — the legacy initialize handshake is refused.
-// GitHub clients are created per tool call from the authenticated request headers.
+// GitHub clientは各tool呼び出しで作り、設定に応じて受信tokenまたは専用App tokenを使う。
 func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHandler {
 	return BuildStreamableHandlerWithOptions(db, threshold, BuilderOptions{})
 }
@@ -84,19 +87,23 @@ func BuildStreamableHandler(db *store.DB, threshold time.Duration) *StreamableHa
 // background access should use this entry point.
 func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, opts BuilderOptions) *StreamableHandler {
 	clientProvider := newGitHubClientProvider(threshold, nil)
-	// watchManager is declared before srv so the SubscribeHandler closure can reference it
-	// for authorization. At the time any subscribe request arrives the server is already
-	// fully initialized, so watchManager is always non-nil.
+	if opts.InstallationTokens != nil {
+		clientProvider = newInstallationClientProvider(threshold, opts.InstallationTokens)
+	}
+	// Appモードではwatchを開始せず、過去のwatch URIへの購読も拒否する。
 	var watchManager *watch.Manager
 	srv := mcp.NewServer(
 		&mcp.Implementation{Name: "review-raven", Version: "0.5.0"},
 		&mcp.ServerOptions{
 			SchemaCache: schemaCache,
 			SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {
-				if watchManager == nil || req == nil || req.Params == nil {
+				if req == nil || req.Params == nil {
 					return nil
 				}
 				uri := req.Params.URI
+				if watchManager == nil {
+					return mcp.ResourceNotFoundError(uri)
+				}
 				const watchPrefix = "review-raven://watch/"
 				const legacyPrefix = "copilot-review://watch/"
 				if strings.HasPrefix(uri, legacyPrefix) {
@@ -125,25 +132,27 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 			},
 		},
 	)
-	watchManager = watch.NewManager(db, watch.Options{
-		Threshold:       threshold,
-		InvalidateToken: nil,
-		ClientFactory:   opts.GatewayClientFactory,
-		NotifyResourceUpdated: func(uri string) {
-			if err := srv.ResourceUpdated(context.Background(), &mcp.ResourceUpdatedNotificationParams{URI: uri}); err != nil {
-				slog.Warn("resource updated notification failed", "uri", uri, "err", err)
-			}
-		},
-	})
-	RegisterStatusTool(srv, clientProvider, db)
-	RegisterWatchTools(srv, watchManager)
-	RegisterWatchResources(srv, watchManager)
-	RegisterWaitTool(srv, clientProvider, db)
-	RegisterRequestTool(srv, clientProvider, db)
+	if opts.InstallationTokens == nil {
+		watchManager = watch.NewManager(db, watch.Options{
+			Threshold:       threshold,
+			InvalidateToken: nil,
+			ClientFactory:   opts.GatewayClientFactory,
+			NotifyResourceUpdated: func(uri string) {
+				if err := srv.ResourceUpdated(context.Background(), &mcp.ResourceUpdatedNotificationParams{URI: uri}); err != nil {
+					slog.Warn("resource updated notification failed", "uri", uri, "err", err)
+				}
+			},
+		})
+		RegisterStatusTool(srv, clientProvider, db)
+		RegisterWatchTools(srv, watchManager)
+		RegisterWatchResources(srv, watchManager)
+		RegisterWaitTool(srv, clientProvider, db)
+		RegisterRequestTool(srv, clientProvider, db)
+		RegisterCycleTool(srv, clientProvider, db)
+		RegisterDiagnoseTokenTool(srv)
+	}
 	RegisterThreadTools(srv, clientProvider)
 	RegisterListCheckRunsForSHATool(srv, clientProvider)
-	RegisterCycleTool(srv, clientProvider, db)
-	RegisterDiagnoseTokenTool(srv)
 	RegisterTrustedCommentAuthorsTool(srv, opts.TrustedCommentAuthors)
 
 	streamableHandler := &StreamableHandler{
@@ -161,8 +170,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 		// Stateless is required for MCP 2026-07-28 negotiation: go-sdk only
 		// accepts the new protocol version on the Streamable HTTP transport when
 		// Stateless is true (stateful servers negotiate down to 2025-11-25).
-		// It also removes the session-hijacking attack surface entirely — with
-		// no Mcp-Session-Id, per-request GitHub token auth is the sole boundary.
+		// session IDを使わず、各リクエストのgateway認証に依存する。
 		Stateless: true,
 		// DisableLocalhostProtection is opt-in via MCP_DISABLE_LOCALHOST_PROTECTION=true.
 		// Enable when the server runs behind a reverse proxy or inside a Docker network.

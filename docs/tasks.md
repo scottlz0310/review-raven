@@ -1,8 +1,10 @@
 # review-raven タスク
 
-現在未完了の作業はありません。
+- [ ] Q8・V4: 専用Appの秘密鍵注入・配備・probe PRの実機検証（`docs/github-app-auth.md`）。gateway Contents縮小はその後に行う。
 
 ## 実装済み（未マージ）
+
+- [x] Q8・V4: 専用Appのinstallation token認証、起動時の所有先・全repo・権限照合、期限前更新、reviewed用6 toolへの公開限定、既存gatewayモードの回帰検証を追加する。
 
 - [x] [#134](https://github.com/scottlz0310/review-raven/issues/134): 必須コメント投稿者の許可リストを、環境変数 `TRUSTED_COMMENT_AUTHORS` から read-only のツール `get_trusted_comment_authors` で公開する（reviewed skill の直書きの廃止の段 1）。未設定は `TRUSTED_AUTHORS_NOT_CONFIGURED` で fail-closed、不正な要素は起動時に fail-fast。
 

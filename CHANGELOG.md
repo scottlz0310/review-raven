@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 専用GitHub Appのinstallation tokenを使う`github-app`認証モードを追加した（Q8・V4）。Appとinstallationの組織所有・全repo・権限を起動時に照合し、tokenを期限前に更新する。専用モードではreviewed用6 toolだけを公開し、Copilot系・診断・watchを非公開とする。既定のgatewayモードは維持する。実機V4検証とgateway Contents縮小は配備後の別段階。
+
 - Added the read-only `get_trusted_comment_authors` tool and the `TRUSTED_COMMENT_AUTHORS` environment variable (comma-separated GitHub logins). The tool publishes the allowlist of PR comment authors whose text may enter an agent's context, so the allowlist lives in deployment configuration instead of being hard-coded in a skill (#134). Logins are normalized like the reviewed skill's `normalize_login` (ASCII-lowercased, one trailing `[bot]` removed) and de-duplicated; a malformed entry (e.g. a wildcard) stops startup. When the variable is unset, the tool returns the `TRUSTED_AUTHORS_NOT_CONFIGURED` error instead of an empty list, so a caller cannot read "nobody is trusted" as "nothing to check" (fail-closed).
 
 ## [0.5.0] - 2026-09-16
