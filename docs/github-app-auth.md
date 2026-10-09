@@ -49,7 +49,7 @@ reader/Q4、PR conversation投稿tool、PR本文更新/Q3は今回追加しな�
 ## 配備とV4検証
 
 1. 専用Appを組織のAll repositoriesへインストールし、必要権限を承認する。秘密鍵を専用の保管庫項目へ登録する。gateway用の鍵は流用しない。
-2. 上記の専用App認証に対応するreview-ravenイメージを配備する。Mcp-Dockerの`docker-compose.review-raven-app.yml`を追加で読み込み、同名の専用環境変数をreview-ravenサービスへ渡す。具体的な読み込み・維持方法は[Mcp-Dockerの手順書](https://github.com/scottlz0310/Mcp-Docker/blob/main/docs/review-raven-app-auth.md)を参照する。
+2. 上記の専用App認証に対応するreview-ravenイメージを配備する。[Mcp-Docker #386](https://github.com/scottlz0310/Mcp-Docker/pull/386)のマージ後は標準Composeから専用環境変数を渡し、`make pull`・`make restart`（main運用では`make pull-main`・`make restart-main`）で配備する。手動の`COMPOSE_FILE`指定は不要。具体的な設定・運用方法は[Mcp-Dockerの手順書](https://github.com/scottlz0310/Mcp-Docker/blob/main/docs/review-raven-app-auth.md)を参照する。
 3. gatewayのreview-raven routeから`upstream_provider_token=true`を外す。`upstream_github_app=true`も付けない（gatewayのAppが使われるため）。routeは次の形とする。
 
    ```text
@@ -68,14 +68,14 @@ reader/Q4、PR conversation投稿tool、PR本文更新/Q3は今回追加しな�
    | resolve | 実在する未解決threadを解決できる |
    | 返信後resolve | 両操作が成功し、再取得で解決状態を確認できる |
    | private checks | private repoの固定SHAでcheck-runsを取得できる |
-   | 対象範囲 | 組織内repoは成功し、組織外repoにはアクセスできない |
+   | 対象範囲 | installation権限は組織内に限定する。組織外の公開repo読み取りは許容する（2026-10-09合意） |
    | token更新 | 新規発行・期限前の更新後も読み取りが成立 |
    | 投稿者ゲート | 次サイクルで専用botの返信を信頼できる |
    | client接続 | 使用中の各CLIから認証・tool呼び出しが成立 |
 
 6. probe検証と運用一巡が成立した後に、gatewayのContents write依存を棚卸しする。gatewayをContents readへ戻す操作は別段階とし、新規tokenで専用Appのresolve、gatewayのログイン・GitHub MCP・残存投稿経路を再確認する。
 
-実機のV4成功はローカルテストやgateway Appの過去のresolve成功から推定しない。秘密鍵未注入・未配備の間はV4未完了として扱う。
+2026-10-09に6 toolの公開範囲、不正Bearerの拒否、metadata・本文取得、専用botの返信・resolve、組織内private repoのChecks取得を実機で確認した。検証用PR #140は未マージでクローズした。[実測証跡](https://github.com/scottlz0310/Mcp-Docker/blob/16107050ee4c6fe3a07922d46f1162ebce4270a9/docs/review-raven-app-v4.md)を参照する。期限越えtoken更新と他クライアントの実操作は未実測で、gateway Contents縮小は後続とする。
 
 ## 切り戻し
 
