@@ -93,7 +93,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	// Appモードではwatchを開始せず、過去のwatch URIへの購読も拒否する。
 	var watchManager *watch.Manager
 	srv := mcp.NewServer(
-		&mcp.Implementation{Name: "review-raven", Version: "0.5.0"},
+		&mcp.Implementation{Name: "review-raven", Version: "0.6.0"},
 		&mcp.ServerOptions{
 			SchemaCache: schemaCache,
 			SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {
