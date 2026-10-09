@@ -64,8 +64,12 @@ func TestInstallationClientProvider(t *testing.T) {
 			})}
 			ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
 			if tt.authenticated {
-				ctx = context.WithValue(ctx, middleware.ContextKeyLogin, "alice")
-				ctx = context.WithValue(ctx, middleware.ContextKeyToken, "gateway-token")
+				request := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+				request.Header.Set("X-Authenticated-User", "alice")
+				request.Header.Set("Authorization", "Bearer "+strings.Repeat("s", 32))
+				middleware.AppProxyAuth(strings.Repeat("s", 32))(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					ctx = context.WithValue(r.Context(), oauth2.HTTPClient, client)
+				})).ServeHTTP(httptest.NewRecorder(), request)
 			}
 			gh, err := newInstallationClientProvider(time.Second, source)(ctx, nil)
 			if err == nil {
@@ -97,12 +101,27 @@ func TestGitHubAppModeSurface(t *testing.T) {
 			}
 			handler := BuildStreamableHandlerWithOptions(db, time.Second, opts)
 			t.Cleanup(handler.Close)
-			httpServer := httptest.NewServer(middleware.Auth()(handler))
+			auth := middleware.Auth()
+			if appMode {
+				auth = middleware.AppProxyAuth(strings.Repeat("s", 32))
+			}
+			apiCalls := 0
+			apiClient := &http.Client{Transport: appRoundTripper(func(req *http.Request) (*http.Response, error) {
+				apiCalls++
+				if req.Header.Get("Authorization") != "Bearer installation-token" {
+					t.Error("共有proxy鍵をGitHubへ送信しました")
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"total_count":0,"check_runs":[]}`))}, nil
+			})}
+			httpServer := httptest.NewServer(auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ctx := context.WithValue(r.Context(), oauth2.HTTPClient, apiClient)
+				handler.ServeHTTP(w, r.WithContext(ctx))
+			})))
 			t.Cleanup(httpServer.Close)
 			transport := &http.Client{Transport: appRoundTripper(func(req *http.Request) (*http.Response, error) {
 				cloned := req.Clone(req.Context())
 				cloned.Header.Set("X-Authenticated-User", "alice")
-				cloned.Header.Set("Authorization", "Bearer gateway-token")
+				cloned.Header.Set("Authorization", "Bearer "+strings.Repeat("s", 32))
 				return http.DefaultTransport.RoundTrip(cloned)
 			})}
 			client := mcp.NewClient(&mcp.Implementation{Name: "app-test", Version: "1"}, nil)
@@ -145,11 +164,36 @@ func TestGitHubAppModeSurface(t *testing.T) {
 				t.Fatalf("許可リスト取得に失敗しました: %v", err)
 			}
 			if appMode {
+				checks, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+					Name: "list_check_runs_for_sha", Arguments: map[string]any{"owner": "scottlz0310", "repo": "review-raven", "sha": strings.Repeat("a", 40)},
+				})
+				if err != nil || checks.IsError || apiCalls != 1 {
+					t.Fatalf("proxy検証後のGitHub操作が失敗しました: err=%v apiCalls=%d", err, apiCalls)
+				}
 				_, err = session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "review-raven://watch/old-watch"})
 				if err == nil {
 					t.Fatal("過去のwatch resourceを取得できました")
 				}
 			}
 		})
+	}
+}
+
+func TestGitHubAppModeRejectsForgedIdentity(t *testing.T) {
+	source := &testInstallationTokens{token: "installation-token"}
+	handler := BuildStreamableHandlerWithOptions(openServerTestDB(t), time.Second, BuilderOptions{InstallationTokens: source})
+	t.Cleanup(handler.Close)
+	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"method":"tools/call","params":{"name":"resolve_review_thread","arguments":{"threadId":"PRRT_forged"}}}`))
+	request.Header.Set("X-Authenticated-User", "scottlz0310-user")
+	request.Header.Set("Authorization", "Bearer arbitrary-token")
+	recorder := httptest.NewRecorder()
+	middleware.AppProxyAuth(strings.Repeat("s", 32))(handler).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized || source.calls != 0 {
+		t.Fatalf("status=%d token発行回数=%d", recorder.Code, source.calls)
+	}
+	ctx := context.WithValue(context.Background(), middleware.ContextKeyLogin, "scottlz0310-user")
+	ctx = context.WithValue(ctx, middleware.ContextKeyToken, "arbitrary-token")
+	if _, err := newInstallationClientProvider(time.Second, source)(ctx, nil); err == nil || source.calls != 0 {
+		t.Fatal("未検証のidentity contextでinstallation tokenを発行しました")
 	}
 }

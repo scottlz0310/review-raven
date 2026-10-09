@@ -41,6 +41,9 @@ func main() {
 	slog.Info("GitHub認証モード", "mode", cfg.authMode)
 
 	authMiddleware := middleware.Auth()
+	if cfg.githubApp != nil {
+		authMiddleware = middleware.AppProxyAuth(cfg.githubApp.ProxySecret)
+	}
 
 	mux := http.NewServeMux()
 
@@ -66,7 +69,7 @@ func main() {
 	threshold := time.Duration(cfg.inProgressThresholdSec) * time.Second
 	builderOpts := tools.BuilderOptions{TrustedCommentAuthors: cfg.trustedCommentAuthors}
 	if cfg.githubApp != nil {
-		source, err := githubapp.NewTokenSource(*cfg.githubApp)
+		source, err := githubapp.NewTokenSource(cfg.githubApp.Config)
 		if err != nil {
 			slog.Error("専用Appの認証を初期化できません", "err", err)
 			os.Exit(1)
@@ -119,7 +122,7 @@ func main() {
 
 type config struct {
 	authMode               string
-	githubApp              *githubapp.Config
+	githubApp              *appAuthConfig
 	port                   string
 	bindAddr               string
 	logLevel               string

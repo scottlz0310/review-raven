@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -11,6 +12,27 @@ type contextKey string
 
 const ContextKeyLogin contextKey = "github_login"
 const ContextKeyToken contextKey = "github_token"
+
+const contextKeyProxyVerified contextKey = "proxy_verified"
+
+// 専用Appの権限を使う経路では、identityだけでなく直前のproxyも認証する。
+func AppProxyAuth(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return Auth()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if secret == "" || subtle.ConstantTimeCompare([]byte(TokenFromContext(r.Context())), []byte(secret)) != 1 {
+				writeUnauthorized(w, "invalid_proxy_token")
+				return
+			}
+			ctx := context.WithValue(r.Context(), contextKeyProxyVerified, true)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		}))
+	}
+}
+
+func ProxyVerified(ctx context.Context) bool {
+	verified, _ := ctx.Value(contextKeyProxyVerified).(bool)
+	return verified
+}
 
 // Auth returns a middleware that requires the identity and Bearer token
 // injected by mcp-gateway. Missing or malformed headers fail closed; there is

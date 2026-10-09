@@ -22,7 +22,7 @@ type InstallationTokens interface {
 
 func newInstallationClientProvider(threshold time.Duration, source InstallationTokens) githubClientProvider {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*ghclient.Client, error) {
-		if loginFromToolRequest(ctx, req) == "" || tokenFromToolRequest(ctx, req) == "" {
+		if !middleware.ProxyVerified(ctx) || loginFromToolRequest(ctx, req) == "" || tokenFromToolRequest(ctx, req) == "" {
 			return nil, autherr.NewAuthRequired()
 		}
 		token, err := source.Token(ctx)

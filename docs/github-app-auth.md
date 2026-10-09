@@ -2,7 +2,7 @@
 
 ## 認証と対象範囲
 
-`REVIEW_RAVEN_AUTH_MODE=github-app` では、review-raven自身が専用Appのinstallation tokenを発行する。gatewayは利用者の認証と、検証済みの`X-Authenticated-User`・Bearerの伝達を担当する。受信BearerをGitHub APIへ渡さず、スレッド返信は`review-raven[bot]`名義になる。利用者はgateway経由でのみ接続する。
+`REVIEW_RAVEN_AUTH_MODE=github-app` では、review-raven自身が専用Appのinstallation tokenを発行する。gatewayは利用者を認証し、検証済みの`X-Authenticated-User`と、専用の共有Bearerを転送する。review-ravenは共有Bearerを定数時間で照合し、未検証のidentity contextではinstallation tokenを発行しない。受信BearerをGitHub APIへ渡さず、スレッド返信は`review-raven[bot]`名義になる。利用者はgateway経由でのみ接続する。
 
 専用Appのinstallation権限は利用者権限と独立する。初版は個人運用を対象とし、組織`scottlz0310`の全repo（今後作成するrepoを含む）を対象とする。利用者ごとのrepo権限チェックは提供しない。review-ravenを外部公開せず、gatewayと同じ内部ネットワークへ置く。
 
@@ -16,6 +16,7 @@
 | `REVIEW_RAVEN_GITHUB_APP_ID` | `5184108` |
 | `REVIEW_RAVEN_GITHUB_APP_INSTALLATION_ID` | `169443079` |
 | `REVIEW_RAVEN_GITHUB_APP_OWNER` | `scottlz0310` |
+| `REVIEW_RAVEN_PROXY_SECRET` | 32文字以上のランダムな専用共有シークレット。同じ値をgatewayとreview-ravenへ保管庫から注入 |
 | `REVIEW_RAVEN_GITHUB_APP_PRIVATE_KEY_B64` | PEM秘密鍵をbase64化した値。保管庫から環境変数へ注入 |
 | `REVIEW_RAVEN_GITHUB_APP_PRIVATE_KEY_FILE` | base64注入の代わりに使用するPEMファイルのパス |
 | `TRUSTED_COMMENT_AUTHORS` | 現行の投稿者許可リスト。`review-raven`を含める |
@@ -52,10 +53,10 @@ reader/Q4、PR conversation投稿tool、PR本文更新/Q3は今回追加しな�
 3. gatewayのreview-raven routeから`upstream_provider_token=true`を外す。`upstream_github_app=true`も付けない（gatewayのAppが使われるため）。routeは次の形とする。
 
    ```text
-   /mcp/review-raven|http://review-raven:8083/mcp
+   /mcp/review-raven|http://review-raven:8083/mcp|upstream_bearer_token_env=REVIEW_RAVEN_PROXY_SECRET
    ```
 
-   gatewayは検証済みidentityとgatewayのBearerを転送する。このBearerはreview-ravenへの認証コンテキストに使い、GitHubへ送らない。gatewayのOAuth App設定やGitHub MCP routeは変更しない。
+   gatewayは受信identityヘッダー・Bearerを上書きし、検証済みidentityと専用の共有Bearerを転送する。review-ravenは共有Bearerが一致した場合だけMCP操作を受け付ける。このBearerはGitHubへ送らない。gatewayのOAuth App設定やGitHub MCP routeは変更しない。共有鍵の未設定・短すぎる値は起動失敗とする。
 
 4. active watchと実行中のレビューがない時間に切り替える。起動ログの照合成功、6 tool、watch非公開、許可リストに`review-raven`があることを確認する。
 5. 同じ専用App tokenを使うprobe PRで次を検証し、PR URL・thread ID・comment ID・対象HEAD・結果を証跡として記録する。鍵・tokenは記録しない。

@@ -22,6 +22,8 @@ func TestLoadGitHubAppConfig(t *testing.T) {
 		{"組織未設定", "github-app", "REVIEW_RAVEN_GITHUB_APP_OWNER", "", true},
 		{"不正base64", "github-app", "REVIEW_RAVEN_GITHUB_APP_PRIVATE_KEY_B64", "secret-invalid!", true},
 		{"鍵未設定", "github-app", "REVIEW_RAVEN_GITHUB_APP_PRIVATE_KEY_B64", "", true},
+		{"proxy secret未設定", "github-app", "REVIEW_RAVEN_PROXY_SECRET", "", true},
+		{"短いproxy secret", "github-app", "REVIEW_RAVEN_PROXY_SECRET", "secret", true},
 		{"鍵の二重指定", "github-app", "REVIEW_RAVEN_GITHUB_APP_PRIVATE_KEY_FILE", "key.pem", true},
 		{"ファイル読み込み失敗", "github-app", "file", "missing.pem", true},
 		{"delegated URL混在", "github-app", "REVIEW_RAVEN_GATEWAY_INTERNAL_URL", "http://127.0.0.1", true},
@@ -33,6 +35,7 @@ func TestLoadGitHubAppConfig(t *testing.T) {
 				"REVIEW_RAVEN_GITHUB_APP_ID": "5184108", "REVIEW_RAVEN_GITHUB_APP_INSTALLATION_ID": "169443079",
 				"REVIEW_RAVEN_GITHUB_APP_OWNER":           "scottlz0310",
 				"REVIEW_RAVEN_GITHUB_APP_PRIVATE_KEY_B64": base64.StdEncoding.EncodeToString([]byte("test-key")),
+				"REVIEW_RAVEN_PROXY_SECRET":               strings.Repeat("s", 32),
 			}
 			if tt.change == "file" {
 				env["REVIEW_RAVEN_GITHUB_APP_PRIVATE_KEY_B64"] = ""

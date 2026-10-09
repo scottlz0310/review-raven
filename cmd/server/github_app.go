@@ -11,7 +11,12 @@ import (
 	"github.com/scottlz0310/review-raven/internal/githubapp"
 )
 
-func loadGitHubAppConfig(getenv func(string) string, readFile func(string) ([]byte, error)) (string, *githubapp.Config, error) {
+type appAuthConfig struct {
+	githubapp.Config
+	ProxySecret string
+}
+
+func loadGitHubAppConfig(getenv func(string) string, readFile func(string) ([]byte, error)) (string, *appAuthConfig, error) {
 	mode := strings.TrimSpace(getenv("REVIEW_RAVEN_AUTH_MODE"))
 	if mode == "" {
 		mode = "gateway"
@@ -24,6 +29,10 @@ func loadGitHubAppConfig(getenv func(string) string, readFile func(string) ([]by
 	}
 	if strings.TrimSpace(getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_URL")) != "" || strings.TrimSpace(getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET")) != "" {
 		return "", nil, errors.New("github-appモードではdelegated background accessの設定を外してください")
+	}
+	proxySecret := strings.TrimSpace(getenv("REVIEW_RAVEN_PROXY_SECRET"))
+	if len(proxySecret) < 32 {
+		return "", nil, errors.New("REVIEW_RAVEN_PROXY_SECRETに32文字以上の専用共有シークレットを指定してください")
 	}
 	id := func(name string) (int64, error) {
 		value, err := strconv.ParseInt(strings.TrimSpace(getenv(name)), 10, 64)
@@ -61,10 +70,13 @@ func loadGitHubAppConfig(getenv func(string) string, readFile func(string) ([]by
 			return "", nil, fmt.Errorf("専用Appの秘密鍵ファイルを読み込めません: %w", err)
 		}
 	}
-	return mode, &githubapp.Config{AppID: appID, InstallationID: installationID, Owner: owner, PrivateKeyPEM: key}, nil
+	return mode, &appAuthConfig{
+		Config:      githubapp.Config{AppID: appID, InstallationID: installationID, Owner: owner, PrivateKeyPEM: key},
+		ProxySecret: proxySecret,
+	}, nil
 }
 
-func loadProcessGitHubAppConfig() (string, *githubapp.Config) {
+func loadProcessGitHubAppConfig() (string, *appAuthConfig) {
 	mode, cfg, err := loadGitHubAppConfig(os.Getenv, os.ReadFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "review-raven: GitHub認証設定が不正です: %v\n", err)
