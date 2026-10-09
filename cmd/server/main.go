@@ -15,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
+	"github.com/scottlz0310/review-raven/internal/githubapp"
 	"github.com/scottlz0310/review-raven/internal/middleware"
 	"github.com/scottlz0310/review-raven/internal/store"
 	"github.com/scottlz0310/review-raven/internal/tools"
@@ -37,9 +38,12 @@ func main() {
 	}
 	defer func() { _ = db.Close() }()
 
-	slog.Info("auth mode: gateway (trusting X-Authenticated-User header from mcp-gateway)")
+	slog.Info("GitHub認証モード", "mode", cfg.authMode)
 
 	authMiddleware := middleware.Auth()
+	if cfg.githubApp != nil {
+		authMiddleware = middleware.AppProxyAuth(cfg.githubApp.ProxySecret)
+	}
 
 	mux := http.NewServeMux()
 
@@ -64,6 +68,23 @@ func main() {
 	// MCP endpoints (auth required) — Streamable HTTP transport (stateless, MCP 2026-07-28)
 	threshold := time.Duration(cfg.inProgressThresholdSec) * time.Second
 	builderOpts := tools.BuilderOptions{TrustedCommentAuthors: cfg.trustedCommentAuthors}
+	if cfg.githubApp != nil {
+		source, err := githubapp.NewTokenSource(cfg.githubApp.Config)
+		if err != nil {
+			slog.Error("専用Appの認証を初期化できません", "err", err)
+			os.Exit(1)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err = source.ValidateInstallation(ctx)
+		cancel()
+		if err != nil {
+			slog.Error("専用Appのinstallationを確認できません", "err", err)
+			os.Exit(1)
+		}
+		builderOpts.InstallationTokens = source
+		slog.Info("専用Appのinstallationを確認しました", "app_id", cfg.githubApp.AppID,
+			"installation_id", cfg.githubApp.InstallationID, "owner", cfg.githubApp.Owner)
+	}
 	if len(cfg.trustedCommentAuthors) == 0 {
 		slog.Warn("TRUSTED_COMMENT_AUTHORS is not set: get_trusted_comment_authors returns an error, so no comment author is trusted. Set TRUSTED_COMMENT_AUTHORS to the GitHub logins whose comments may be read (comma-separated).")
 	} else {
@@ -100,6 +121,8 @@ func main() {
 }
 
 type config struct {
+	authMode               string
+	githubApp              *appAuthConfig
 	port                   string
 	bindAddr               string
 	logLevel               string
@@ -111,6 +134,7 @@ type config struct {
 }
 
 func loadConfig() config {
+	mode, appConfig := loadProcessGitHubAppConfig()
 	gatewayURL := strings.TrimSpace(os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_URL"))
 	gatewaySecret := strings.TrimSpace(os.Getenv("REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET"))
 	// Fail-closed: both env vars must be set together. Configuring only one is
@@ -144,6 +168,8 @@ func loadConfig() config {
 		os.Exit(1)
 	}
 	return config{
+		authMode:               mode,
+		githubApp:              appConfig,
 		port:                   getEnv("MCP_PORT", "8083"),
 		bindAddr:               getEnv("BIND_ADDR", "127.0.0.1"),
 		logLevel:               getEnv("LOG_LEVEL", "info"),

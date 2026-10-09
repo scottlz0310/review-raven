@@ -47,6 +47,8 @@ Do not add reviewer-side queue / webhook / GitHub App review posting to this rep
 
 ## MCP server details
 
+専用Appモードでは、gatewayの利用者認証とGitHub APIの資格情報を分離する。review-raven自身が専用Appのinstallation tokenを発行し、reviewed用6 toolだけを公開する。既定のgatewayモードは従来の資格情報委譲・Copilot・watchを維持する。[設定・信頼境界・移行手順](github-app-auth.md)を参照。
+
 - **Server name**: `review-raven`
 - **MCP client key**: `review-raven` (tool prefix: `mcp__review-raven__*`)
 - **Resource URI scheme**: `review-raven://watch/{watch_id}`

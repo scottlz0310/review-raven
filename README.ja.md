@@ -16,10 +16,12 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 - **GraphQL ベースの Copilot review request**。REST `requested_reviewers` が bot actor を黙って無視する問題を回避する
 - **PR レビュースレッド単位の操作**。`PRRT_xxx` ノード ID で reply / resolve / reply+resolve を行う
 - **mcp-gateway** による認証。ゲートウェイが OAuth を処理し、検証済みの identity ヘッダーを注入する
-- **Stateless Streamable HTTP**（MCP protocol `2026-07-28` のみ）。`Mcp-Session-Id` は発行も参照もせず、各リクエストは mcp-gateway が注入する GitHub token で個別に認可する。非推奨の `initialize` handshake は JSON-RPC `-32022`（`Unsupported protocol version`）で拒否するため、旧 client が下位バージョンへネゴシエートすることはない（client は `server/discover` で discovery する）
+- **Stateless Streamable HTTP**（MCP protocol `2026-07-28` のみ）。`Mcp-Session-Id` は発行も参照もせず、各リクエストの利用者認証はmcp-gatewayに委任する。GitHub APIには設定に応じて利用者tokenまたは専用App tokenを使う。非推奨の `initialize` handshake は JSON-RPC `-32022`（`Unsupported protocol version`）で拒否するため、旧 client が下位バージョンへネゴシエートすることはない（client は `server/discover` で discovery する）
 - **SQLite による watch state 永続化**。プロセス再起動後の active watch は `STALE` として観測できる
 
 ## 提供ツール
+
+専用Appモード（`REVIEW_RAVEN_AUTH_MODE=github-app`）では、スレッド取得・返信・resolve・返信後resolve・check-runs取得・許可リスト取得の6 toolだけを公開します。返信は`review-raven[bot]`名義になり、Copilot系・ユーザートークン診断・watchは非公開です。既定の`gateway`モードは従来の機能を維持します。[設定・移行・V4検証](docs/github-app-auth.md)を参照してください。
 
 | ツール | 用途 |
 |---|---|

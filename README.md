@@ -16,10 +16,12 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 - **GraphQL-based Copilot review request**. Avoids the issue where REST `requested_reviewers` silently ignores bot actors.
 - **Per-thread review operations**. Reply, resolve, or reply+resolve individual threads using `PRRT_xxx` node IDs.
 - **mcp-gateway integration** for authentication. The gateway handles OAuth and injects verified identity headers.
-- **Stateless Streamable HTTP** on MCP protocol `2026-07-28`, and on that revision only. No `Mcp-Session-Id` is issued or read; every request is authorized on its own from the GitHub token injected by mcp-gateway. The deprecated `initialize` handshake is refused with JSON-RPC `-32022` (`Unsupported protocol version`), so a legacy client cannot negotiate down — clients discover the server through `server/discover`.
+- **Stateless Streamable HTTP**（MCP protocol `2026-07-28` のみ）。利用者認証はmcp-gatewayに委任し、GitHub APIには設定に応じて利用者tokenまたは専用App tokenを使う。`Mcp-Session-Id`は発行・参照しない。`initialize`はJSON-RPC `-32022`で拒否し、`server/discover`を使用する。
 - **SQLite-persisted watch state**. Active watches that survive a process restart are observable as `STALE`.
 
 ## Tools
+
+専用Appモード（`REVIEW_RAVEN_AUTH_MODE=github-app`）の認証・6 toolの公開範囲・移行手順は[専用GitHub App認証](docs/github-app-auth.md)を参照してください。既定の`gateway`モードは従来の機能を維持します。
 
 | Tool | Description |
 |---|---|
