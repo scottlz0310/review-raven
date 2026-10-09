@@ -1,6 +1,7 @@
 # review-raven タスク
 
-- [ ] Q8・V4: 専用Appの秘密鍵注入・配備・probe PRの実機検証（`docs/github-app-auth.md`）。gateway Contents縮小はその後に行う。
+- [x] Q8・V4: 専用Appの秘密鍵注入・配備・probe PRの主要実機検証（`docs/github-app-auth.md`）。
+- [ ] V4残件: 期限越えtoken更新・他クライアント実操作。gateway Contents縮小は後続。
 
 ## 実装済み（未マージ）
 

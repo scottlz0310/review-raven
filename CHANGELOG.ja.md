@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 専用Appの配備手順を標準Compose・make運用へ同期し、V4実測結果とinstallation権限の対象範囲を記録した。
+
 ### Added
 
 - 専用Appモードでは`REVIEW_RAVEN_PROXY_SECRET`でgatewayからの共有Bearerを検証し、任意のidentity・Bearerによる専用App操作を拒否する。
