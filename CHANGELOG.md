@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-09
+
 ### Changed
 
 - 専用Appの配備手順を標準Compose・make運用へ同期し、V4実測結果とinstallation権限の対象範囲を記録した。
@@ -210,7 +212,8 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/scottlz0310/review-raven/compare/v0.2.0...v0.3.0
