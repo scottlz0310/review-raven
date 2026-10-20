@@ -1,5 +1,14 @@
 # review-raven タスク
 
+## #144 責務整理
+
+- [x] 現行6repoのtool/resource/webhook/storeとconsumerを実査し、越境・正本・認証・目標データフロー・段階移行を設計文書へ記録する。
+- [x] architectureを現行方針へ更新し、repo別の後続実装Issue案を整理する。
+- [ ] 設計レビュー後に後続Issueを実起票し、squirrel-notifier#497へ依存契約を反映する（本作業は案まで）。
+- [ ] 新API・永続化・publisher・CLI逐次出力・skill切替を後続Issueで実装・配布・実機検証する。
+
+設計: [責務境界](design/review-responsibility-boundaries.md)、[後続Issue案](design/review-responsibility-followups.md)。#144全体の完了と製品移行完了を混同しない。
+
 - [x] Q8・V4: 専用Appの秘密鍵注入・配備・probe PRの主要実機検証（`docs/github-app-auth.md`）。
 - [ ] V4残件: 期限越えtoken更新・他クライアント実操作。gateway Contents縮小は後続。
 
