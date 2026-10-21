@@ -66,8 +66,10 @@ queue 全体は移設しない。review-raven は依頼の同一性、受付と�
 |---|---|---|
 | 公開MCP `request_review` | raven | owner/repo/prNumber、expectedHeadSha、reason、idempotencyKey。検証後、cycleId、round、headSha、受付状態、resourceUriを返す。再依頼も同一入口 |
 | 公開MCP `get_review_request` | raven | cycleIdで後述のsnapshotを返す。read・list・listenすべて同じPR認可を通す |
+| 公開MCP `cancel_review_request` | raven | cycleId、expectedHeadSha、expectedSnapshotRevision、idempotencyKey。依頼を取消要求状態にし、旧候補の無効化確認後にcancelledを返す。結果なし失敗cycleからの復旧入口。利用者の認可された明示操作でのみ呼ぶ |
 | 公開Resource `review-raven://requests/{cycleId}` | raven | 不変の依頼先を購読。所有者・repo・PR・HEADをsnapshotに含め、URIだけを信用しない。最新PRの可変aliasは初期版では作らない |
 | 内部MCP `accept_review_candidate` | owl | raven認証主体からcycleId/round/HEAD/reasonを受理。PR originを再検証し、永続的な受理記録・重複判定の後queueへ。結果にcandidateIdを返す |
+| 内部MCP `cancel_review_candidate` | owl | ravenからcycleId/round/HEAD/取消IDを受け、旧候補・起動権・結果投稿権を永続的に無効化する。未受理cycleにも取消記録を残し、遅着する受付を拒否する。進行中のGitHub書込みを確定・照合してからACKする |
 | 内部MCP `ingest_review_candidate` | raven | owlの検証済みwebhookイベント。deliveryId/コメントID等のsourceIdを受け、公開入口と同じ受付処理へ。手動経路との重複を結合 |
 | 内部MCP `publish_review_result`／`get_review_result` | raven受信／owl読取 | owlからcycleId/HEAD/結果version/投稿ID・URL・種別を通知。欠落時はowlの永続結果参照を再取得。ravenがVerdictを生成しない |
 | 内部MCP `publish_review_observation` | raven | Squirrelが認証されたproducerとして観測を送信。candidateとの対応、producerEpoch、sequence、観測時刻と許可されたフィールドだけを受理 |
@@ -102,7 +104,7 @@ sequenceDiagram
     A->>R: request_review(新HEAD, re-review-requested, 新key)
 ```
 
-webhook入口は `GitHub→owl署名・候補検証→raven受付→owl内部候補受付` とする。配送ループを避け、owlは通知したsourceIdを再発行しない。webhookと手動の同一sourceIdは同じ受付に結合する。sourceIdのない同一PR/HEAD/reasonの未完了依頼は既存cycleを返し、完了後の明示的な同HEAD再依頼だけ新roundを発行する。
+webhook入口は `GitHub→owl署名・候補検証→raven受付→owl内部候補受付` とする。配送ループを避け、owlは通知したsourceIdを再発行しない。webhookと手動の同一sourceIdは同じ受付に結合する。sourceIdのない同一PR/HEAD/reasonの未完了依頼は既存cycleを返す。完了後、または下記の明示取消が確定した後の同HEAD再依頼は、新しいkeyで新roundを発行する。
 
 ## 状態の正本・保存・一貫性
 
@@ -114,9 +116,10 @@ webhook入口は `GitHub→owl署名・候補検証→raven受付→owl内部候
 | 結果本文・Verdict | GitHubのthread-owl投稿 | owlが投稿結果IDとcycle/HEADの対応を永続索引化し、ravenは参照を保存。本文や独立した承認フラグを複製しない |
 | 購読用snapshot | ravenの再構築可能な射影 | 依頼正本・結果参照・観測から生成。snapshotRevisionを単調増加 |
 
-snapshotの必須項目は `schemaVersion, cycleId, owner, repo, prNumber, expectedHeadSha, round, dispatch, execution, result, terminal, snapshotRevision, updatedAt`。
+snapshotの必須項目は `schemaVersion, cycleId, owner, repo, prNumber, expectedHeadSha, round, dispatch, cancellation, execution, result, terminal, snapshotRevision, updatedAt`。
 
 - `dispatch`: pending / accepted / failed。失敗時は原因codeを返す。未配送をqueue登録済みと表示しない。
+- `cancellation`: none / requested / confirmed。取消要求時点ではterminal=falseを維持し、owlの無効化ACK後にconfirmedとする。取消配送失敗の原因codeと再実行条件も公開する。
 - `execution`: unknown / waiting / running / finished、holdReason、producerId、producerEpoch、sequence、observedAt、receivedAt、freshness。holdReasonはciPending/busy/manual/autoPause。`finished`にはoutcome/exitCodeを付加できる。
 - `result`: 未取得ならnull。取得時はsource=thread-owl、kind=reviewed/approved、headSha、resultVersion、GitHub投稿参照。APPROVED Verdictの有無と、単なるレビュー終了を区別する。
 - `terminal`: 対象cycle/HEADに紐づく結果が検証済み、または依頼がsuperseded/cancelledとなったときtrue。後二者は成功完了ではない。プロセス終了、観測停止、配送失敗だけではtrueにしない。
@@ -126,7 +129,7 @@ snapshotの必須項目は `schemaVersion, cycleId, owner, repo, prNumber, expec
 1. owner/repoは小文字、PRは正整数、HEADは完全な40桁小文字hex。ravenは現在のPR HEADとexpectedHeadShaを照合して受付し、競合時はHEAD_CONFLICTを返す。
 2. cycleIdは再起動後も重複しないID。roundはPRごとの永続単調増加値。Squirrelのローカルround・owl旧roundとは区別する。
 3. idempotencyKeyは認証主体とPRのscopeで一意。同じkey・同じpayloadは同じ受付、payload違いは競合。異なるkeyでも同一未完了PR/HEAD/reasonは既存cycleへ結合する。
-4. 新HEAD受付時は旧未完了cycleをsupersededにする。旧IDの購読先を新cycleへ付け替えない。同HEADの意図した再依頼は前cycle完了後に新keyで行う。
+4. 新HEAD受付時は旧未完了cycleをsupersededにする。旧IDの購読先を新cycleへ付け替えない。同HEADの意図した再依頼は前cycle完了後、または明示取消確定後に新keyで行う。取消要求中は既存cycleへ結合し、新roundを作らない。
 5. reviewer起動時にcycleId/round/HEADを固定して投稿まで渡す。旧実行が投稿開始時に「現在round」を引く方式を廃止する。HEAD更新の検出はSquirrelの既存CIゲートとreviewer投稿前確認を維持。
 6. eventIdは配送イベントIDでありcycleIdではない。両者とcandidateIdを明示的に関連付ける。旧queueイベントで対応を証明できない場合はexecution=unknownとし、時刻だけで新cycleへ結合しない。
 7. 観測はcycleId/HEAD/登録producerEpoch一致、sequence増加の場合だけ反映する。同じsequence・同じ内容はACK、同じsequence・違う内容は競合。遅着更新は現状態を変更せず結果codeを返す。
@@ -142,6 +145,19 @@ SQLiteの依頼・outbox・射影は永続volumeで保持する。owlにも受�
 未完了依頼は自動削除しない。完了/superseded/cancelledの依頼・観測・冪等性台帳は30日保持を初期契約とし、削除後はURIを別cycleに再利用せずREQUEST_EXPIREDを返す。owl結果索引・配送重複台帳も最低30日保持し、削除済み依頼への遅延再送は410相当で停止する。GitHub投稿はこの保持期限で削除しない。
 
 Squirrelは状態変化時と60秒heartbeatで送信する。ravenの受信時刻から3分以上でfreshness=stale、未受信はunknown、送信元停止の明示通知はstoppedとして区別する。受信前の古い観測を新しいheartbeat扱いにしないようobservedAtと受信時刻の差も確認し、許容時計差は設定値として検証する。期限境界でもresultは消さない。
+
+### 結果なし失敗cycleを同じHEADで復旧する手順
+
+既存candidateを同じcycleで再実行するAPIは設けず、**認可された取消→無効化確認→新roundの受付**を採る。これにより結果のない異常終了と配送再送上限到達のどちらも、PRへ無意味な変更を加えず復旧できる。復旧は自動再enqueueやreviewer起動APIではなく、依頼側の明示操作である。
+
+1. 利用者は `get_review_request` で対象cycle/HEAD、結果なし、配送または実行の失敗とsnapshotRevisionを確認する。単なる無観測・timeoutだけで失敗や取消済みと決めない。
+2. 元の依頼主体、または保護設定で当該repoの取消を許可された運用主体が `cancel_review_request` を呼ぶ。ravenはHEAD・revision・権限を照合し、取消要求と取消outboxを同一transactionで永続化する。同じkeyの再送は同じ取消IDを返す。異なるpayloadは競合。以後、当該cycleの通常配送を停止する。
+3. owlは取消を永続記録し、queueの旧候補、Squirrelの旧candidateに対する起動権、旧cycleの新規結果投稿を無効化する。取消が受付より先に到着した場合も、後から来る旧受付を拒否する。各起動・投稿はこの永続状態を照合する。GitHub書込みが既に進行している場合は結果を照合するまで取消ACKを返さない。
+4. 結果投稿が先に確定した場合は取消を競合として返し、ravenはその結果参照を反映する。結果を削除・取消扱いにしない。書込み結果が不明な間も取消は未確定とし、原因を公開して新roundを作らない。
+5. owlが結果なしでの無効化をACKした後、ravenはcancellation=confirmed・依頼状態cancelled・terminal=trueを永続化して通知する。owl未到達、ACK消失、再送上限到達ではrequested・terminal=falseのままとする。認可された利用者は同じ取消keyで明示的に配送を再開でき、旧候補の再実行は行わない。
+6. cancelledを確認後、利用者は **新しい依頼key** で `request_review` を呼ぶ。同じPR/HEAD/reasonでも旧cycleへ結合せず、新cycleId・新roundを返す。旧依頼keyは保持期限内、元のcancelled cycleを返し続ける。GitHub webhookの旧sourceId再送も新roundを作らない。
+
+取消はreviewerプロセスの強制終了・選択変更ではない。旧プロセスが残る場合のbusy制御はSquirrelに残し、新候補は既存の起動契約を通す。旧cycleの遅延観測は旧URIに限定し、新cycleの結果や実行状態を上書きしない。取消記録は旧受付の配送・再送可能期間以上（最低30日）保持し、期限切れの旧受付は拒否する。
 
 ## 認証・認可・本文の信頼境界
 
@@ -187,6 +203,10 @@ skill/agentはシェルの長時間プロセスを保持し、到着行を同一
 | ravenまたはowlがACK前・GitHub投稿直後に停止 | 台帳とoutbox・投稿相関から復帰し、二重投稿しない |
 | heartbeat停止・未受信・明示停止 | stale・unknown・stoppedを区別し、成功完了にしない |
 | 起動失敗／exitCode=0で結果なし／結果がプロセス終了より先着 | 原因を報告／待機継続／結果とterminalを維持 |
+| 結果投稿前の異常終了／通常配送の再送上限到達後に同HEADで復旧 | 明示取消ACK後に限り、同じPR/HEAD/reasonの新keyで新cycle・新roundを受け付ける |
+| 取消要求中の再依頼／取消のACK消失・再起動・重複 | 新roundを作らず、同じ取消IDの状態・配送を回復する |
+| 取消が候補受付より先着／取消確定後に旧candidate起動・結果・webhookが遅着 | 旧受付・起動・投稿を拒否し、新cycleを作らない・上書きしない |
+| 取消と結果投稿が競合／GitHub書込み結果が不明 | 確定済み結果を優先／取消ACKを保留。未確定のまま新roundへ進めない |
 | 最初の途中更新／listen前に結果確定／切断・再接続 | 途中報告して待機継続／ack後readで回復／現在snapshotで回復 |
 | URI不一致・認証拒否・期限切れ | 構造化エラーで停止。別routeや再enqueueで迂回しない |
 | metadata検証後に未許可投稿者のコメント追加 | 本文取得前に検出して停止 |

@@ -5,6 +5,7 @@
 - [x] 現行6repoのtool/resource/webhook/storeとconsumerを実査し、越境・正本・認証・目標データフロー・段階移行を設計文書へ記録する。
 - [x] architectureを現行方針へ更新し、repo別の後続実装Issue案を整理する。
 - [x] 英語版architectureを独立した英語の説明として維持し、日本語版との内容・相互リンクと今回の英語CHANGELOG記載を揃える。
+- [x] PR #146のquestion: 結果なし失敗cycleの明示取消・無効化確認・同HEAD新round受付と、R1/O1の受け入れテストを定義する。
 - [ ] 設計レビュー後に後続Issueを実起票し、squirrel-notifier#497へ依存契約を反映する（本作業は案まで）。
 - [ ] 新API・永続化・publisher・CLI逐次出力・skill切替を後続Issueで実装・配布・実機検証する。
 

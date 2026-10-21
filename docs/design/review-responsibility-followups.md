@@ -14,6 +14,9 @@
 - SQLite台帳・transactional outbox・round・冪等性・30日保持・失効URIを実装する。
 - O1への配送ACKまでpendingとし、失敗を握りつぶさず構造化して公開する。
 - 同HEAD再依頼、新HEAD、競合payload、再起動、配送重複、権限拒否を検証する。
+- 認可された `cancel_review_request`、revision競合検知、取消outboxとrequested/confirmedを実装する。owlの無効化ACKまではterminal=falseを維持する。
+- 結果なし異常終了・通常配送の再送上限到達を起点に、明示取消確定→同PR/HEAD/reason・新key→新cycle/roundの復旧を検証する。旧依頼key・旧webhook sourceIdは旧cycleを返す。
+- 取消ACK消失・再起動・再送上限時の同取消keyによる明示的な配送再開、取消中の再依頼結合、権限拒否、結果投稿との競合を検証する。
 
 依存: O1・I1とschemaを先に確定し、相互接続の完了後opt-inで有効化。
 
@@ -29,6 +32,8 @@
 - reviewer起動時から結果投稿までcycleを束縛し、投稿時の現在round取得に頼らない。
 - queue再依頼優先とstatusリセットの不整合、古い実行の遅着、HEAD移動、配送再送を検証する。
 - 旧enqueue/queue/statusを維持し、新旧を混同しないcapabilityを公開する。
+- 内部 `cancel_review_candidate` に永続取消記録を追加し、未受理cycleを含めて旧候補の起動・新規投稿を拒否する。GitHub書込みが進行中・結果不明なら、照合前に取消ACKを返さない。
+- 取消先着後の旧受付、ACK消失・重複・再起動、旧candidateの遅延起動/投稿、結果投稿先着との競合を検証する。Squirrelのbusy制御と既存起動契約は維持する。
 
 依存: R1・I1と同じ契約fixtureを使う。旧API撤去は含めない。
 
