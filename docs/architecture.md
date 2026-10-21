@@ -4,96 +4,45 @@
 
 ## Position of review-raven
 
-`review-raven` is the **reviewed-side** MCP server in the review infrastructure. It provides operations for the side that *receives* a review and works on fixes.
+review-raven is the MCP server for the side that requests reviews and addresses their findings. Its public responsibilities cover initial requests, re-review requests, progress and completion retrieval and subscription, thread retrieval, replies, and resolution.
 
-This repository does not implement reviewer-side operations (review posting, webhook reception, queue management). Those belong to [thread-owl](https://github.com/scottlz0310/thread-owl).
+These responsibilities include the target architecture; they do not mean that all APIs already exist. The [#144 responsibility design](design/review-responsibility-boundaries.md) (Japanese) records the differences between current implementation and target behavior, source evidence, API/state/authentication contracts, and phased migration. The [follow-up issue proposals](design/review-responsibility-followups.md) (Japanese) have not been filed.
 
-## Five-component review infrastructure
-
-| # | Repository | Role | Responsibility |
-|---|-----------|------|----------------|
-| 1 | **[thread-owl](https://github.com/scottlz0310/thread-owl)** | reviewer side | GitHub App bot. Posts reviews and in-line comments from a consistent account |
-| 2 | **review-raven** (this repo) | reviewed side | MCP server. Thread read, reply, resolve/unresolve, re-review request |
-| 3 | **[mcp-resource-subscriber](https://github.com/scottlz0310/mcp-resource-subscriber)** | status subscription bridge | Called from both review-raven and thread-owl via skill. Subscribes to `resources/updated` notifications |
-| 4 | **[mcp-gateway](https://github.com/scottlz0310/mcp-gateway)** | MCP reverse proxy | Routing and authentication boundary for MCP servers |
-| 5 | **[Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker)** | container orchestration | Container management, gateway route generation, CLI agent config automation |
-
-## Responsibility of review-raven
-
-- Read PR review threads
-- Extract and classify unresolved threads
-- Reply to review comments
-- Resolve / unresolve review threads
-- Request re-review after fixes are applied
-- Handle any review thread regardless of provider (Copilot review, human reviewer, bot reviewer)
-
-Copilot review is one acquisition provider, not the permanent core concept of this repository.
-
-## Boundary with thread-owl
-
-| review-raven | thread-owl |
-|---|---|
-| Reviewed-side operations | Reviewer-side operations |
-| Thread read / reply / resolve | Review posting |
-| Re-review request | Webhook reception |
-| — | Review candidate queue |
-| — | `queue://review/queue` MCP resource |
-
-Do not add reviewer-side queue / webhook / GitHub App review posting to this repository. Do not add reviewed-side thread resolve / re-review request workflows to thread-owl.
-
-## Boundary with mcp-resource-subscriber
-
-`mcp-resource-subscriber` is an external CLI / bridge that connects MCP resource subscription to agent workflows. review-raven does not embed a long-lived subscription client or watcher CLI. When needed, agent skills call `mcp-resource-subscriber` externally.
-
-## MCP server details
-
-専用Appモードでは、gatewayの利用者認証とGitHub APIの資格情報を分離する。review-raven自身が専用Appのinstallation tokenを発行し、reviewed用6 toolだけを公開する。既定のgatewayモードは従来の資格情報委譲・Copilot・watchを維持する。[設定・信頼境界・移行手順](github-app-auth.md)を参照。
-
-- **Server name**: `review-raven`
-- **MCP client key**: `review-raven` (tool prefix: `mcp__review-raven__*`)
-- **Resource URI scheme**: `review-raven://watch/{watch_id}`
-- **Auth**: gateway-delegated via mcp-gateway (`X-Authenticated-User` + `Authorization` headers)
-
-## Migration / Compatibility
-
-### Resource URI scheme
-
-Watch resources use the `review-raven://watch/{id}` scheme. The legacy `copilot-review://watch/{id}` scheme (used before the rename) is **no longer accepted**. Re-request any active watches after upgrading from `copilot-review-mcp`.
-
-### Environment variables
-
-`REVIEW_RAVEN_GATEWAY_INTERNAL_URL` and `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` are the only supported names. The former `COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET` names are **no longer read**.
-
-### MCP tool names
-
-Tool names (`request_copilot_review`, `start_copilot_review_watch`, etc.) are unchanged for public API compatibility.
-
-## Re-review request flow
-
-After completing fixes, review-raven posts `@thread-owl re-review requested` on the PR via `add_issue_comment`. This is the boundary between the reviewed-side cycle and the reviewer-side cycle.
+## Six-component review infrastructure
 
 | Component | Responsibility |
 |---|---|
-| **review-raven** (reviewed side) | Posts `@thread-owl re-review requested` comment after fix → reply → resolve. This ends the reviewed-side cycle. |
-| **thread-owl** (reviewer side) | Detects the `@thread-owl` mention via `issue_comment.created` webhook → enqueues as `ReviewCandidate.reason = "re-review-requested"` → notifies `queue://review/queue` resource. |
-| **mcp-resource-subscriber** | Subscribes to the queue resource and bridges the update to the agent workflow. |
+| review-raven | Request intake, re-review requests, request state and progress publication, and finding remediation |
+| thread-owl | Reviewer target validation, the internal candidate queue, and finding and result publication |
+| squirrel-notifier | Launching, CI waits, holds, resumption, notifications, and execution observations |
+| mcp-resource-subscriber / resource-bridge-cli | Subscriptions, update reception, resource reads, tool calls, and structured delivery to the same session |
+| mcp-gateway | Client authentication, verified identity propagation, connectivity, and routing |
+| Mcp-Docker | Canonical skills and instructions, distribution, Compose, routes, and CLI registration |
 
-review-raven does not own or manage the review queue. The `@thread-owl` comment is the handoff point. After posting it, the reviewed-side cycle is complete; the next reviewer-side cycle starts from thread-owl's queue.
+review-raven does not perform reviews. thread-owl retains its internal reviewer queue. A Squirrel process exit is not a review result. GitHub posts made by thread-owl are the source of truth for review results; the request side does not create an independent Verdict.
 
-This approach uses GitHub's standard PR conversation rather than a Copilot-specific API, so it works with any reviewer identity (Copilot, human, bot).
+## Current implementation
 
-## Relation to pr-review-subscribe skill
+The dedicated GitHub App mode exposes six reviewed-side tools: thread retrieval, reply, resolution, reply-and-resolve, check runs for a pinned SHA, and trusted authors. review-raven issues and refreshes installation tokens and requires the gateway's verified identity and dedicated shared Bearer credential. See [GitHub App authentication](github-app-auth.md) (Japanese).
 
-The `pr-review-subscribe` skill is the upper-level workflow integrating review acquisition, thread handling, and fix workflow. review-raven serves as the reviewed-side MCP provider within that skill.
+The default gateway mode also retains Copilot requests, status, cycle, wait, watch, and diagnostic tools. Watch resources use `review-raven://watch/{id}`; their persistent state resides in SQLite's `trigger_log` and `review_watch` tables. The dedicated App mode does not expose those tools or resources. There is no persistent ledger for the new review-request workflow yet.
 
-## Future direction
+`get_review_threads(include_bodies=false)` returns metadata without bodies. Omitting that option returns bodies, so the current skill also bears responsibility for validating authors before body retrieval. A reader that enforces this gate within the tool remains follow-up work.
 
-As [github-mcp-server](https://github.com/github/github-mcp-server) matures, some MCP tools currently provided by review-raven may become redundant. If github-mcp-server covers the full set, review-raven may eventually become a skill-only repository. New MCP tools should be evaluated against github-mcp-server coverage before being added here.
+## Current request and completion wait
 
-## Related issues
+- In `--mcp-http` mode, the implementation agent calls thread-owl's `enqueue_review`, then subscribes to `review://status/{owner}/{repo}/{prNumber}` through the external `resource-bridge-cli`.
+- In `--webhook-mcp-http` mode, GitHub events enqueue candidates. Do not add a manual enqueue for the same event. Webhook intake does not reset the status to pending, so the manual path's completion-wait contract cannot be assumed for that path.
+- The current skill posts re-review comments through GitHub MCP or another explicitly supported route. review-raven does not have a generic `add_issue_comment` tool. A comment alone does not guarantee queue registration, reviewer startup, or completion.
+- Validate the URI, acknowledgement, target PR, final status, and agreement between the pinned HEAD, result HEAD, and current PR HEAD. Fetch unresolved threads after completion. Timeouts and missing state are not success.
+- Queue registration does not launch a reviewer. An independent reviewer starts through the existing Squirrel launch contract or an explicit instruction to a separate CLI. Do not perform reviewer-side self-review in the implementation session.
 
-- [review-raven #63](https://github.com/scottlz0310/review-raven/issues/63) — Responsibility boundary definition (this document)
-- [thread-owl #75](https://github.com/scottlz0310/thread-owl/issues/75) — Thread Owl responsibility boundary
-- [mcp-resource-subscriber #86](https://github.com/scottlz0310/mcp-resource-subscriber/issues/86) — `--json` output mode
-- [mcp-gateway #92](https://github.com/scottlz0310/mcp-gateway/issues/92) — MCP reverse proxy / auth boundary
-- [Mcp-Docker #158](https://github.com/scottlz0310/Mcp-Docker/issues/158) — Container orchestration
+Keep this path until the phased migration defined in #144. Do not register or discover the CLI as an MCP server. The broader subscription-internalization and CLI-removal initiative remains on hold.
+
+## Target migration
+
+review-raven will persist requests with a fixed cycle and HEAD, then deliver candidates to thread-owl's internal intake. It will receive execution observations from Squirrel and result references from thread-owl and expose them through a resource for each request. Initial request, intermediate reporting, completion, fixes, replies, resolution, and re-review will use the same public entry point. The [design document](design/review-responsibility-boundaries.md) (Japanese) defines the proposed API names, URIs, authorization, duplicate and delayed delivery handling, retention, and rollback conditions.
+
+The reviewer-side dependency on review-raven's `list_check_runs_for_sha` is documented and retained. The permanent CI data source will be decided separately when the deferred D3 discussion resumes. GitHub MCP removal depends on replacement readers, narrowly scoped posting APIs, consumer migration, and live validation.
+
+The legacy `copilot-review://watch/{id}` scheme and `COPILOT_REVIEW_*` environment variables are unsupported. Retiring existing watch or Copilot APIs requires a separate PR after a consumer audit.

@@ -4,96 +4,45 @@
 
 ## review-raven の位置づけ
 
-`review-raven` はレビュー基盤における **review される側** の MCP server である。レビューを*受けて*修正する側の操作を提供する。
+review-raven はレビューを依頼し、受けて修正する側のMCP serverである。初回依頼・再依頼、依頼したレビューの進捗／完了の取得・購読、指摘取得・返信・resolveを公開窓口として担う。
 
-このリポジトリは reviewer 側の操作（review 投稿・webhook 受信・queue 管理）を実装しない。それらは [thread-owl](https://github.com/scottlz0310/thread-owl) の責務である。
+この責務は目標を含む。現行APIをすべて実装済みという意味ではない。現行と目標の差、コード調査根拠、API・状態・認証契約と段階移行は [#144の責務設計](design/review-responsibility-boundaries.md) を参照する。[後続Issue案](design/review-responsibility-followups.md)は未起票。
 
-## 5本立てレビュー基盤
+## 6構成の責務
 
-| # | リポジトリ | 立場 | 責務 |
-|---|-----------|------|------|
-| 1 | **[thread-owl](https://github.com/scottlz0310/thread-owl)** | review する側 | GitHub App bot。同一アカウントから review・in-line-comment を投稿する |
-| 2 | **review-raven**（このリポジトリ） | review される側 | MCP server。スレッド読み取り・返信・resolve/unresolve・再レビュー依頼 |
-| 3 | **[mcp-resource-subscriber](https://github.com/scottlz0310/mcp-resource-subscriber)** | 状態購読ブリッジ | review-raven・thread-owl 両方から skill 経由で呼ばれる。`resources/updated` 通知を購読する |
-| 4 | **[mcp-gateway](https://github.com/scottlz0310/mcp-gateway)** | MCP reverse proxy | MCP server 群への routing と認証境界 |
-| 5 | **[Mcp-Docker](https://github.com/scottlz0310/Mcp-Docker)** | container orchestration | コンテナ管理・gateway route 生成・CLI agent 設定自動化 |
-
-## review-raven の責務
-
-- PR レビュースレッドを読む
-- unresolved スレッドを抽出・分類する
-- review comment に返信する
-- review スレッドを resolve / unresolve する
-- 修正完了後に再レビュー依頼を行う
-- Copilot review に限らず GitHub review スレッド全般を扱う（AI reviewer / human reviewer / bot reviewer 問わず）
-
-Copilot review は取得 provider の一つであり、このリポジトリの恒久的な中心概念ではない。
-
-## thread-owl との責務境界
-
-| review-raven | thread-owl |
+| コンポーネント | 所有する責務 |
 |---|---|
-| review される側の操作 | review する側の操作 |
-| スレッド読み取り・返信・resolve | review 投稿 |
-| 再レビュー依頼 | webhook 受信 |
-| — | review candidate queue |
-| — | `queue://review/queue` MCP resource |
+| review-raven | 依頼受付・再依頼・依頼状態と進捗の公開・修正対応 |
+| thread-owl | reviewer対象検証・内部候補queue・指摘と結果の投稿 |
+| squirrel-notifier | 起動・CI待ち・保留・再開・通知・実行状態の観測 |
+| mcp-resource-subscriber / resource-bridge-cli | 購読・更新受信・read・tool呼出し・同一セッションへの構造化配送 |
+| mcp-gateway | クライアント認証・検証済みidentity伝達・接続・routing |
+| Mcp-Docker | skill・instructionの正本と配布・compose・route・CLI登録 |
 
-このリポジトリに reviewer 側の queue / webhook / GitHub App 投稿基盤を追加しない。thread-owl に reviewed 側の thread resolve / re-review request workflow を追加しない。
+review-ravenはレビューそのものを行わない。thread-owlのreviewer内部queueは維持する。Squirrelのプロセス終了はレビュー結果ではない。レビュー結果の正本はGitHub上のthread-owl投稿とし、依頼側で独立したVerdictを作らない。
 
-## mcp-resource-subscriber との責務境界
+## 現行実装
 
-`mcp-resource-subscriber` は MCP resource subscription を agent workflow に接続する外部 CLI / ブリッジである。review-raven は長時間稼働する subscription client や watcher CLI を内蔵しない。必要な場合は agent skill から `mcp-resource-subscriber` を外部呼び出しする。
+専用GitHub Appモードはreviewed用6 tool（thread取得・返信・resolve・reply_and_resolve、SHA固定check runs、trusted authors）を公開する。review-ravenがinstallation tokenを発行・更新し、gatewayの検証済みidentityと専用共有Bearerを要求する。詳細は [App認証](github-app-auth.md) を参照する。
 
-## MCP server 詳細
+既定のgatewayモードにはCopilot要求・状態・cycle・wait・watch・診断も残る。watchのresourceは `review-raven://watch/{id}`、永続状態はSQLiteの `trigger_log` / `review_watch`。専用Appではこれらのtool/resourceを非公開とする。新しいレビュー依頼の永続台帳はまだない。
 
-専用Appモードでは、gatewayの利用者認証とGitHub APIの資格情報を分離する。review-raven自身が専用Appのinstallation tokenを発行し、reviewed用6 toolだけを公開する。既定のgatewayモードは従来の資格情報委譲・Copilot・watchを維持する。[設定・信頼境界・移行手順](github-app-auth.md)を参照。
+`get_review_threads(include_bodies=false)`は本文なしmetadataを返す。省略時は本文を返すため、本文取得前の投稿者ゲートは現行skillの責務でもある。toolによる強制readerは後続課題として扱う。
 
-- **server 名**: `review-raven`
-- **MCP client キー**: `review-raven`（tool prefix: `mcp__review-raven__*`）
-- **Resource URI スキーム**: `review-raven://watch/{watch_id}`
-- **認証**: mcp-gateway 経由の gateway 委任（`X-Authenticated-User` + `Authorization` ヘッダー）
+## 現行の依頼・完了待機
 
-## Migration / 互換性
+- `--mcp-http`では実装側がthread-owlの `enqueue_review` を呼び、外部CLI `resource-bridge-cli` で `review://status/{owner}/{repo}/{prNumber}` を購読する。
+- `--webhook-mcp-http`ではGitHubイベントから候補が投入される。手動enqueueを重ねない。webhook投入はstatusのpending初期化を行わないため、手動経路と同じ完了待機契約は前提にしない。
+- 再依頼コメントは現在のskillがGitHub MCP等を通じて投稿する。review-ravenに汎用 `add_issue_comment` があるわけではない。コメントだけでqueue登録・reviewer起動・完了を保証しない。
+- URI・ack・対象PR・最終status・固定HEADと結果HEADと現在HEADの一致を確認し、完了後は未解決threadを実取得する。timeoutや状態消失を成功扱いにしない。
+- queue登録はreviewer起動ではない。独立reviewerは既存Squirrel起動契約または別CLIへの明示指示によって実行する。実装セッションで自己レビューしない。
 
-### Resource URI スキーム
+この経路は#144の段階移行まで維持する。CLIをMCP serverとして登録・探索せず、購読内製化全体やCLI廃止は再開しない。
 
-watch resource のスキームは `review-raven://watch/{id}`。改名前に使われていた旧スキーム `copilot-review://watch/{id}` は**受け付けない**。`copilot-review-mcp` からアップグレードした場合、active な watch は再依頼が必要。
+## 移行先
 
-### 環境変数
+review-ravenがcycle/HEADを固定して依頼を永続受付し、thread-owlへ内部候補を配送する。Squirrelの実行観測とthread-owlの結果参照を受け取り、依頼ごとのResourceで公開する。初回依頼→途中報告→完了→修正・返信・resolve→再依頼まで同じ窓口を使う。API名・URI・認可・重複と遅延・保持・切り戻し条件は [設計文書](design/review-responsibility-boundaries.md) に定義する。
 
-`REVIEW_RAVEN_GATEWAY_INTERNAL_URL` と `REVIEW_RAVEN_GATEWAY_INTERNAL_SECRET` のみサポート。旧名 `COPILOT_REVIEW_GATEWAY_INTERNAL_URL/SECRET` は**読まれない**。
+reviewerが `list_check_runs_for_sha` をreview-ravenから読む逆依存は記録して維持する。恒久CI取得元はD3の保留判断と合わせて別途決める。GitHub MCPの撤去はreader・狭い投稿API・利用先の置換と実機検証後に判断する。
 
-### MCP ツール名
-
-公開 API 互換維持のため、ツール名（`request_copilot_review`、`start_copilot_review_watch` 等）は変更しない。
-
-## 再レビュー依頼フロー
-
-修正完了後、review-raven は `add_issue_comment` で PR に `@thread-owl re-review requested` を投稿する。これが reviewed-side cycle と reviewer-side cycle の境界となる。
-
-| コンポーネント | 責務 |
-|---|---|
-| **review-raven**（reviewed 側） | 修正 → reply → resolve 完了後に `@thread-owl re-review requested` コメントを投稿する。これが reviewed-side cycle の終端。 |
-| **thread-owl**（reviewer 側） | `issue_comment.created` webhook で `@thread-owl` メンションを検出 → `ReviewCandidate.reason = "re-review-requested"` として queue に積む → `queue://review/queue` resource を更新通知する。 |
-| **mcp-resource-subscriber** | queue resource を購読し、更新を agent workflow に橋渡しする。 |
-
-review-raven は review queue を管理しない。`@thread-owl` コメントが引き渡しポイントであり、投稿後に reviewed-side cycle は完了する。次の reviewer-side cycle は thread-owl の queue から始まる。
-
-この方式は Copilot 固有 API ではなく GitHub の通常 PR conversation を利用するため、任意の reviewer（Copilot・人間・bot）に対して機能する。
-
-## pr-review-subscribe skill との関係
-
-`pr-review-subscribe` skill は review 取得・スレッド処理・修正 workflow を統合する上位 workflow である。review-raven はその中で reviewed-side MCP provider として機能する。
-
-## 将来方針
-
-[github-mcp-server](https://github.com/github/github-mcp-server) の成熟により、review-raven が現在提供している MCP ツール群が不要になる可能性がある。github-mcp-server が全ツールをカバーした場合、review-raven は skill のみの構成になるかもしれない。新しい MCP ツールを追加する前に、github-mcp-server での代替可能性を先に確認すること。
-
-## 関連 ISSUE
-
-- [review-raven #63](https://github.com/scottlz0310/review-raven/issues/63) — 責務境界定義（このドキュメント）
-- [thread-owl #75](https://github.com/scottlz0310/thread-owl/issues/75) — Thread Owl の責務境界
-- [mcp-resource-subscriber #86](https://github.com/scottlz0310/mcp-resource-subscriber/issues/86) — `--json` output mode
-- [mcp-gateway #92](https://github.com/scottlz0310/mcp-gateway/issues/92) — MCP reverse proxy / auth boundary
-- [Mcp-Docker #158](https://github.com/scottlz0310/Mcp-Docker/issues/158) — container orchestration
+旧 `copilot-review://watch/{id}` と `COPILOT_REVIEW_*` 環境変数は非対応。既存watchやCopilot系APIの廃止は利用者監査後の別PRとする。
