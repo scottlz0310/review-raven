@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- #144: 6リポジトリの現行契約を棚卸しし、レビュー依頼・進捗購読・実行観測・レビュー実施の責務設計と段階移行、後続Issue案を追加した。architectureの旧境界を更新。新API・配備は未実装。
+- #144: Audited the current contracts across six repositories and added a responsibility design, phased migration plan, and follow-up issue proposals for review requests, progress subscriptions, execution observations, and review execution. Updated both English and Japanese architecture documents. New APIs and deployment changes are not implemented.
 
 ## [0.6.0] - 2026-10-09
 

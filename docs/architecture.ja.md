@@ -1,5 +1,7 @@
 # アーキテクチャ
 
+[English](architecture.md)
+
 ## review-raven の位置づけ
 
 review-raven はレビューを依頼し、受けて修正する側のMCP serverである。初回依頼・再依頼、依頼したレビューの進捗／完了の取得・購読、指摘取得・返信・resolveを公開窓口として担う。
