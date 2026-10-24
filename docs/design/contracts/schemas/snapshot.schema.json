@@ -229,13 +229,15 @@
       ]
     },
     {
-      "description": "terminal は terminalReason と対応する。result=結果参照あり、cancelled=取消確定、superseded=後続 cycle あり。プロセス終了・観測停止・配送失敗だけでは terminal にならない。",
+      "description": "terminal は terminalReason と対応する。result=結果参照あり、cancelled=取消確定（結果は持たない）、superseded=後続 cycle あり（遅着した旧 cycle の結果参照は保持できる）。非終端は result を持たず、取消は none / requested だけ。プロセス終了・観測停止・配送失敗だけでは terminal にならない。",
       "oneOf": [
         {
           "properties": {
             "terminal": { "const": false },
             "terminalReason": { "type": "null" },
-            "supersededBy": { "type": "null" }
+            "supersededBy": { "type": "null" },
+            "result": { "type": "null" },
+            "cancellation": { "properties": { "state": { "enum": ["none", "requested"] } } }
           }
         },
         {
@@ -251,6 +253,7 @@
             "terminal": { "const": true },
             "terminalReason": { "const": "cancelled" },
             "supersededBy": { "type": "null" },
+            "result": { "type": "null" },
             "cancellation": { "properties": { "state": { "const": "confirmed" } } }
           }
         },

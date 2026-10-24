@@ -43,10 +43,12 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
 2. `snapshotRevision` は cycle ごとに単調増加し、状態が変わるたびに増える。同一内容の再送は増やさない。
 3. `round` は PR ごとの永続単調増加値で、Squirrel のローカル round・owl の旧 round とは別物。`cycleId` は再起動後も重複せず、別 cycle に再利用しない。
 4. 同じ `idempotencyKey` は**認証主体と PR の scope**で一意。同一 payload は同じ cycle、payload 違いは `IDEMPOTENCY_CONFLICT`。key が違っても同一 PR/HEAD/reason の**未完了**依頼は既存 cycle に結合する。取消が確定した cycle は旧 key・旧 `sourceId` で旧 cycle を返し続け、新 round を作らない。
-5. `resultVersion` は owl で単調増加。raven は旧 cycle/HEAD・旧 version を拒否し、結果到着後の実行終了や heartbeat で `result` / `terminal` を退行させない。
+5. `resultVersion` は owl で単調増加。raven は、cycle の `expectedHeadSha` と異なる HEAD の結果（`RESULT_HEAD_MISMATCH`）、古い version（`RESULT_VERSION_STALE`）、取消確定済み cycle への結果（`CANDIDATE_CANCELLED`）を拒否する。結果到着後の実行終了や heartbeat で `result` / `terminal` を退行させない。
+   - **superseded な cycle への遅着**: 旧 HEAD の実行結果が新 HEAD の受付後に届いた場合は拒否せず、**旧 cycle の結果参照として保存**する（その cycle は `terminalReason = superseded` のまま `result` だけを持つ）。新 cycle の `result` と状態は更新しない。GitHub 上の投稿は実在し、owl の outbox が再送し続けないようにするため。
 6. `execution.sequence` は同一 `producerId`・`producerEpoch` 内で増加する。同じ sequence・同じ内容は `duplicate`（冪等 ACK）、同じ sequence・違う内容は `SEQUENCE_CONFLICT`、より小さい sequence は `OBSERVATION_STALE`。
 7. 取消要求の間（`cancellation.state = requested`）は `terminal = false`。owl の無効化 ACK が返って初めて `confirmed` / `terminal = true`。
 8. 結果投稿が取消より先に確定していれば取消は `CANCEL_RESULT_POSTED`。GitHub 書込みが進行中または結果不明の間は `CANCEL_UNCONFIRMED` とし、**新 round に進めない**。
+9. 非終端（`terminal = false`）の snapshot は `result = null` かつ `cancellation.state` が `none` / `requested` のいずれか。取消が確定した（`confirmed`）cycle は必ず terminal で、`result = null`。結果を持つ cycle は必ず terminal（`result` または `superseded`）。これらは schema の制約として検証する。
 
 ## snapshot の補足（設計文書に対する明確化）
 

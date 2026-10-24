@@ -423,6 +423,22 @@
         "op": "get_review_request",
         "input": {
           "schemaVersion": 1,
+          "cycleId": "cyc_01jbq3x8n5r7t9v2w4y6z8a0c1"
+        },
+        "expect": {
+          "snapshot": {
+            "terminal": true,
+            "terminalReason": "superseded",
+            "supersededBy": "cyc_01jbq3x8n5r7t9v2w4y6z8a0c2",
+            "result.kind": "approved"
+          }
+        }
+      },
+      {
+        "actor": "agent",
+        "op": "get_review_request",
+        "input": {
+          "schemaVersion": 1,
           "cycleId": "cyc_01jbq3x8n5r7t9v2w4y6z8a0c2"
         },
         "expect": {
