@@ -509,7 +509,10 @@ func TestCancelResumeWithSameKey(t *testing.T) {
 		t.Fatalf("a failed cancel delivery must publish its cause and stay requested: %+v", snap)
 	}
 
-	// 同じ取消 key の再送だけが、明示的な配送再開になる。
+	// 配送が終わった(上限到達)状態にしてから、同じ取消 key の再送だけが明示的な配送再開になる。
+	if _, err := e.db.Exec(`UPDATE request_outbox SET delivered_at = ?, outcome = ? WHERE kind = 'cancel'`, e.svc.now(), outcomeAbandoned); err != nil {
+		t.Fatal(err)
+	}
 	resumed := cancel(t, e, in)
 	if !resumed.Deduplicated || resumed.CancelID != cxl1 {
 		t.Fatalf("resume must reuse the cancel id: %+v", resumed)

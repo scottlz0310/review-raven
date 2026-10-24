@@ -553,3 +553,77 @@ func TestOutboxColumnIsAddedToAnExistingDatabase(t *testing.T) {
 		t.Fatalf("outcome = %v, err = %v; want the new column with existing rows left pending", outcome, err)
 	}
 }
+
+// 配送の系列が生きている間(バックオフ中)に同じ取消 key を再送しても、系列は 1 つのまま。
+// 再開として新しい行を足すと、同じ取消 ID の系列が並走し、設定の試行上限を超えて配送される。
+func TestCancelResendDuringBackoffKeepsOneRetrySeries(t *testing.T) {
+	e := outboxEnv(t)
+	e.request("agent-req-0001", headA, "opened")
+	e.accept(cyc1, cand1)
+	in := cancelInput(e, cyc1, "agent-cancel-0001")
+	cancel(t, e, in)
+	d := &fakeDeliverer{onCancel: func(int, CancelMessage) (CancelResult, error) { return CancelResult{}, failWith(CodeUnavailable) }}
+	limit := DefaultSettings().Delivery.MaxAttempts
+
+	e.deliver(d) // 1 回目の一時的な失敗。原因が公開され、次の再送を待つ
+	if snap := e.snapshot(cyc1); snap.Cancellation.ErrorCode == nil {
+		t.Fatal("the cause of the failed attempt must be published")
+	}
+	before := e.snapshot(cyc1).SnapshotRevision
+
+	resent := cancel(t, e, in) // バックオフ中の再送
+	if !resent.Deduplicated || resent.SnapshotRevision != before {
+		t.Fatalf("a resend during the retry series must change nothing: %+v (revision was %d)", resent, before)
+	}
+	if n := e.outboxCount(outboxCancel); n != 1 {
+		t.Fatalf("cancel messages = %d, want 1: the retry series must not be duplicated", n)
+	}
+
+	// 系列が生きている間は、毎回再送しながら時計を進める。配送の総数は上限のまま。
+	for range limit - 1 {
+		e.clock.advance(2 * time.Minute)
+		cancel(t, e, in)
+		e.deliver(d)
+	}
+	if got := d.cancelCalls(); got != limit {
+		t.Fatalf("cancel attempts = %d, want exactly the limit %d", got, limit)
+	}
+	if n := e.outboxCount(outboxCancel); n != 1 {
+		t.Fatalf("cancel messages = %d, want 1 for the whole series", n)
+	}
+	if got := e.outboxOutcome(cyc1, 1); got != outcomeAbandoned {
+		t.Fatalf("outcome = %q, want %q", got, outcomeAbandoned)
+	}
+
+	// 上限に達して配送が終わった後は、再送しない限り何も送らない。
+	e.clock.advance(2 * time.Minute)
+	e.deliver(d)
+	if got := d.cancelCalls(); got != limit {
+		t.Fatalf("an abandoned cancellation must not be sent again without a resume (%d calls)", got)
+	}
+}
+
+// 非再送の拒否で終わった取消も、配送が終わっているため、同じ取消 key の再送で明示的に再開できる。
+func TestCancelResumesAfterAFinalRejection(t *testing.T) {
+	e := outboxEnv(t)
+	e.request("agent-req-0001", headA, "opened")
+	e.accept(cyc1, cand1)
+	in := cancelInput(e, cyc1, "agent-cancel-0001")
+	cancel(t, e, in)
+	d := &fakeDeliverer{onCancel: func(int, CancelMessage) (CancelResult, error) { return CancelResult{}, failWith(CodePermissionDenied) }}
+
+	e.deliver(d)
+	if got := e.outboxOutcome(cyc1, 1); got != outcomeRejected {
+		t.Fatalf("outcome = %q, want %q", got, outcomeRejected)
+	}
+
+	d.onCancel = cancelOK // 権限が直った後
+	cancel(t, e, in)
+	if n := e.outboxCount(outboxCancel); n != 2 {
+		t.Fatalf("cancel messages = %d, want 2 (the rejected one + the resume)", n)
+	}
+	e.deliver(d)
+	if snap := e.snapshot(cyc1); !snap.Terminal || snap.Cancellation.State != CancelConfirmed {
+		t.Fatalf("the resumed cancellation must be delivered: %+v", snap)
+	}
+}

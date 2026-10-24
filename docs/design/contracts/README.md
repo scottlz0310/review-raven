@@ -47,7 +47,7 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
    - **superseded な cycle への遅着**: 旧 HEAD の実行結果が新 HEAD の受付後に届いた場合は拒否せず、**旧 cycle の結果参照として保存**する（その cycle は `terminalReason = superseded` のまま `result` だけを持つ）。新 cycle の `result` と状態は更新しない。GitHub 上の投稿は実在し、owl の outbox が再送し続けないようにするため。
 6. `execution.sequence` は同一 `producerId`・`producerEpoch` 内で増加する。同じ sequence・同じ内容は `duplicate`（冪等 ACK）、同じ sequence・違う内容は `SEQUENCE_CONFLICT`、より小さい sequence は `OBSERVATION_STALE`。
 7. 取消要求の間（`cancellation.state = requested`）は `terminal = false`。owl の無効化 ACK が返って初めて `confirmed` / `terminal = true`。
-8. 結果投稿が取消より先に確定していれば取消は `CANCEL_RESULT_POSTED`。GitHub 書込みが進行中または結果不明の間は `CANCEL_UNCONFIRMED` とし、**新 round に進めない**。
+8. 結果投稿が取消より先に確定していれば取消は `CANCEL_RESULT_POSTED`。取消の配送は、同じ取消 ID の系列を**常に 1 つ**だけ保つ：配送が生きている間（バックオフ中を含む）の同じ取消 key の再送は何も変えず、試行上限とバックオフを守る。配送が終わった後（上限到達・非再送の拒否）の同じ key の再送だけが、新しい系列としての明示的な再開になる。GitHub 書込みが進行中または結果不明の間は `CANCEL_UNCONFIRMED` とし、**新 round に進めない**。
 9. 非終端（`terminal = false`）の snapshot は `result = null` かつ `cancellation.state` が `none` / `requested` のいずれか。取消が確定した（`confirmed`）cycle は必ず terminal で、`result = null`。結果を持つ cycle は必ず terminal（`result` または `superseded`）。これらは schema の制約として検証する。
 
 ## snapshot の補足（設計文書に対する明確化）
