@@ -75,6 +75,16 @@ CREATE TABLE IF NOT EXISTS request_keys (
     PRIMARY KEY (principal, owner, repo, pr, kind, idem_key)
 );
 
+-- Per-PR round counter. It outlives the cycles it numbered, so a round is never
+-- reused after a purge or a restart.
+CREATE TABLE IF NOT EXISTS pr_rounds (
+    owner      TEXT    NOT NULL,
+    repo       TEXT    NOT NULL,
+    pr         INTEGER NOT NULL,
+    last_round INTEGER NOT NULL,
+    PRIMARY KEY (owner, repo, pr)
+);
+
 -- A webhook delivery / comment ID stays bound to its cycle forever (within
 -- retention), so a late redelivery of an old source never opens a new round.
 CREATE TABLE IF NOT EXISTS source_bindings (

@@ -19,7 +19,7 @@ func (s *Service) PublishResult(ctx context.Context, principal string, in Result
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		c, err := loadCycle(ctx, tx, in.CycleID)
 		if err != nil {
-			return err
+			return deliveryError(err)
 		}
 		if err := s.authorize(ctx, principal, ActionPublishResult, c.Owner, c.Repo, c.RequestedBy); err != nil {
 			return err
@@ -99,7 +99,7 @@ func (s *Service) PublishObservation(ctx context.Context, principal string, in O
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		c, err := loadCycle(ctx, tx, in.CycleID)
 		if err != nil {
-			return err
+			return deliveryError(err)
 		}
 		if err := s.authorize(ctx, principal, ActionObserve, c.Owner, c.Repo, c.RequestedBy); err != nil {
 			return err
@@ -308,18 +308,33 @@ func (s *Service) RecordCancelRejected(ctx context.Context, cycleID, cancelID, c
 	})
 }
 
-// PurgeExpired removes finished requests older than the retention period,
-// leaving a tombstone so the ID answers REQUEST_EXPIRED and is never reused.
-// Idempotency keys older than their own retention are dropped as well.
+// PurgeExpired applies the retention periods and returns how many requests
+// were removed.
+//
+//   - A finished request is removed after FinishedRequestRetention, leaving a
+//     tombstone so the ID answers REQUEST_EXPIRED and is never reused. A request
+//     that carries a cancellation is kept for the longer of that and
+//     CancellationRecordRetention, because the record must outlive the window in
+//     which an old acceptance can still be redelivered.
+//   - Idempotency keys and source bindings are NOT removed with their request:
+//     they live for their own retention. A replay of an old key or source whose
+//     request was already removed therefore resolves to the tombstone (an
+//     expired request) and never opens a new cycle.
+//   - The per-PR round counter is never purged.
 func (s *Service) PurgeExpired(ctx context.Context) (int, error) {
 	now := s.d.Now().UTC()
-	cutoff := now.Add(-s.d.Settings.FinishedRequestRetention).Format(timeLayout)
-	keyCutoff := now.Add(-s.d.Settings.IdempotencyRetention).Format(timeLayout)
+	st := s.d.Settings
+	finishedCutoff := now.Add(-st.FinishedRequestRetention).Format(timeLayout)
+	cancelledCutoff := now.Add(-max(st.FinishedRequestRetention, st.CancellationRecordRetention)).Format(timeLayout)
+	keyCutoff := now.Add(-st.IdempotencyRetention).Format(timeLayout)
+	sourceCutoff := now.Add(-max(st.IdempotencyRetention, st.CancellationRecordRetention)).Format(timeLayout)
 
 	purged := 0
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(ctx,
-			`SELECT cycle_id FROM review_requests WHERE terminal_at IS NOT NULL AND terminal_at < ?`, cutoff)
+			`SELECT cycle_id FROM review_requests
+			  WHERE terminal_at IS NOT NULL AND terminal_at < ?
+			    AND (cancel_state = 'none' OR terminal_at < ?)`, finishedCutoff, cancelledCutoff)
 		if err != nil {
 			return fmt.Errorf("select expired requests: %w", err)
 		}
@@ -342,10 +357,11 @@ func (s *Service) PurgeExpired(ctx context.Context) (int, error) {
 
 		stamp := now.Format(timeLayout)
 		for _, id := range ids {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO expired_cycles (cycle_id, expired_at) VALUES (?, ?)`, id, stamp); err != nil {
+				return fmt.Errorf("record expired request %s: %w", id, err)
+			}
 			for _, stmt := range []string{
-				`INSERT OR IGNORE INTO expired_cycles (cycle_id, expired_at) VALUES (?, '` + stamp + `')`,
-				`DELETE FROM request_keys WHERE cycle_id = ?`,
-				`DELETE FROM source_bindings WHERE cycle_id = ?`,
 				`DELETE FROM request_outbox WHERE cycle_id = ?`,
 				`DELETE FROM review_requests WHERE cycle_id = ?`,
 			} {
@@ -355,8 +371,12 @@ func (s *Service) PurgeExpired(ctx context.Context) (int, error) {
 			}
 			purged++
 		}
+
 		if _, err := tx.ExecContext(ctx, `DELETE FROM request_keys WHERE created_at < ?`, keyCutoff); err != nil {
 			return fmt.Errorf("purge idempotency keys: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM source_bindings WHERE created_at < ?`, sourceCutoff); err != nil {
+			return fmt.Errorf("purge source bindings: %w", err)
 		}
 		return nil
 	})

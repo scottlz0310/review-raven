@@ -128,18 +128,20 @@ func sequentialIDs() func(prefix string) string {
 	}
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...func(*Deps)) *env {
 	t.Helper()
-	return newEnvOn(t, openDB(t, ":memory:"))
+	return newEnvOn(t, openDB(t, ":memory:"), opts...)
 }
 
-func newEnvOn(t *testing.T, db *sql.DB) *env {
+// newEnvOn builds a Service on db. opts adjust the dependencies, for example
+// custom retention settings or the real ID generator for a simulated restart.
+func newEnvOn(t *testing.T, db *sql.DB, opts ...func(*Deps)) *env {
 	t.Helper()
 	clock := &fakeClock{now: time.Date(2026, 10, 24, 13, 0, 0, 0, time.UTC)}
 	heads := &fakeHeads{head: map[string]string{}}
 	heads.set(headA)
 
-	svc, err := NewService(context.Background(), db, Deps{
+	deps := Deps{
 		Authorizer: fakeAuth{
 			allowed:   map[string]bool{agent: true, operator: true, owl: true, squirrel: true},
 			operators: map[string]bool{operator: true},
@@ -149,7 +151,11 @@ func newEnvOn(t *testing.T, db *sql.DB) *env {
 		Settings:  DefaultSettings(),
 		Now:       clock.Now,
 		NewID:     sequentialIDs(),
-	})
+	}
+	for _, opt := range opts {
+		opt(&deps)
+	}
+	svc, err := NewService(context.Background(), db, deps)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

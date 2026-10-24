@@ -48,6 +48,16 @@ func newError(code, format string, args ...any) *Error {
 	return &Error{Code: code, Message: fmt.Sprintf(format, args...), Retryable: retryable[code]}
 }
 
+// deliveryError maps a purged request to DELIVERY_EXPIRED for the internal
+// (service-to-service) surfaces: a late redelivery for a removed request is a
+// terminal condition for the sender, unlike a public read of an expired URI.
+func deliveryError(err error) error {
+	if ErrorCode(err) == CodeRequestExpired {
+		return newError(CodeDeliveryExpired, "the request was removed after its retention period")
+	}
+	return err
+}
+
 // ErrorCode returns the contract code of err, or "" when err is not an *Error.
 func ErrorCode(err error) string {
 	if e, ok := errors.AsType[*Error](err); ok {

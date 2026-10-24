@@ -142,7 +142,7 @@ func (s *Service) IngestCandidate(ctx context.Context, principal string, in Inge
 		head: in.HeadSHA, reason: in.Reason, sourceID: in.SourceID,
 	})
 	if err != nil {
-		return IngestOutput{}, err
+		return IngestOutput{}, deliveryError(err)
 	}
 	return IngestOutput{
 		SchemaVersion: SchemaVersion,
@@ -196,7 +196,9 @@ func (s *Service) createOrMerge(ctx context.Context, p createParams) (*createRes
 		}
 		now := s.now()
 		for _, c := range unfinished {
-			if c.Head == p.head && c.Reason == p.reason {
+			// 取消要求中（無効化 ACK 前）の cycle は、reason が違っても同じ HEAD の再依頼を
+			// 結合する。GitHub 書込み結果が不明な旧候補と新候補を並行させないため。
+			if c.Head == p.head && (c.Reason == p.reason || c.CancelState == CancelRequested) {
 				if err := s.bind(ctx, tx, p, c.ID, "", now); err != nil {
 					return err
 				}
@@ -216,15 +218,18 @@ func (s *Service) createOrMerge(ctx context.Context, p createParams) (*createRes
 			}
 		}
 
-		var maxRound sql.NullInt64
+		// round は cycle の削除後も残る PR 単位のカウンタから採番する（永続単調増加）。
+		var round int
 		if err := tx.QueryRowContext(ctx,
-			`SELECT MAX(round) FROM review_requests WHERE owner = ? AND repo = ? AND pr = ?`,
-			p.owner, p.repo, p.pr).Scan(&maxRound); err != nil {
-			return fmt.Errorf("read latest round: %w", err)
+			`INSERT INTO pr_rounds (owner, repo, pr, last_round) VALUES (?, ?, ?, 1)
+			 ON CONFLICT (owner, repo, pr) DO UPDATE SET last_round = last_round + 1
+			 RETURNING last_round`,
+			p.owner, p.repo, p.pr).Scan(&round); err != nil {
+			return fmt.Errorf("allocate round: %w", err)
 		}
 
 		c := &cycle{
-			ID: id, Owner: p.owner, Repo: p.repo, PR: p.pr, Round: int(maxRound.Int64) + 1,
+			ID: id, Owner: p.owner, Repo: p.repo, PR: p.pr, Round: round,
 			Head: p.head, Reason: p.reason, RequestedBy: p.principal,
 			DispatchState: DispatchPending, CancelState: CancelNone, ExecState: ExecUnknown,
 			Revision: 1, CreatedAt: now, UpdatedAt: now,
