@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,9 @@ type Deps struct {
 	Settings   Settings
 	Now        func() time.Time
 	NewID      func(prefix string) string
+	// Jitter returns a value in [0, 1) used to spread delivery retries. Nil uses
+	// math/rand/v2; tests inject a fixed value.
+	Jitter func() float64
 }
 
 // Service is the review-request ledger.
@@ -102,6 +106,9 @@ func NewService(ctx context.Context, db *sql.DB, deps Deps) (*Service, error) {
 	}
 	if deps.NewID == nil {
 		deps.NewID = NewID
+	}
+	if deps.Jitter == nil {
+		deps.Jitter = rand.Float64
 	}
 	if err := deps.Settings.Validate(); err != nil {
 		return nil, fmt.Errorf("reviewrequest: invalid settings: %w", err)
@@ -418,8 +425,16 @@ func (s *Service) CancelReview(ctx context.Context, principal string, in CancelR
 				return newError(CodeCancelResultPosted, "a review result was already posted for this cycle")
 			}
 			if c.CancelState == CancelRequested && c.CancelErr.Valid {
-				if err := s.resumeCancel(ctx, tx, c, now); err != nil {
+				// 再開するのは、この取消の配送が終わっている（上限到達・拒否）ときだけ。配送の系列が
+				// 生きている間の再送は何も変えない。足すと同じ取消 ID の系列が並走し、上限を超えて配送する。
+				live, err := hasLiveCancelMessage(ctx, tx, c.ID, c.CancelID.String)
+				if err != nil {
 					return err
+				}
+				if !live {
+					if err := s.resumeCancel(ctx, tx, c, now); err != nil {
+						return err
+					}
 				}
 			}
 			out = cancelOutput(c, true)
@@ -465,6 +480,19 @@ func (s *Service) CancelReview(ctx context.Context, principal string, in CancelR
 		return nil
 	})
 	return out, err
+}
+
+// hasLiveCancelMessage reports whether a cancel message of this cancellation is
+// still waiting for delivery or for its next retry.
+func hasLiveCancelMessage(ctx context.Context, q queryer, cycleID, cancelID string) (bool, error) {
+	var n int
+	if err := q.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM request_outbox
+		  WHERE cycle_id = ? AND kind = ? AND delivered_at IS NULL AND json_extract(payload, '$.cancelId') = ?`,
+		cycleID, outboxCancel, cancelID).Scan(&n); err != nil {
+		return false, fmt.Errorf("look up pending cancel messages: %w", err)
+	}
+	return n > 0, nil
 }
 
 func (s *Service) resumeCancel(ctx context.Context, tx *sql.Tx, c *cycle, now string) error {

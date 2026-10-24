@@ -509,7 +509,10 @@ func TestCancelResumeWithSameKey(t *testing.T) {
 		t.Fatalf("a failed cancel delivery must publish its cause and stay requested: %+v", snap)
 	}
 
-	// 同じ取消 key の再送だけが、明示的な配送再開になる。
+	// 配送が終わった(上限到達)状態にしてから、同じ取消 key の再送だけが明示的な配送再開になる。
+	if _, err := e.db.Exec(`UPDATE request_outbox SET delivered_at = ?, outcome = ? WHERE kind = 'cancel'`, e.svc.now(), outcomeAbandoned); err != nil {
+		t.Fatal(err)
+	}
 	resumed := cancel(t, e, in)
 	if !resumed.Deduplicated || resumed.CancelID != cxl1 {
 		t.Fatalf("resume must reuse the cancel id: %+v", resumed)
@@ -597,11 +600,11 @@ func TestCancelConflicts(t *testing.T) {
 			t.Fatalf("operator cancel: %v", err)
 		}
 	})
-	t.Run("rejection codes are limited", func(t *testing.T) {
+	t.Run("only contract codes are accepted as a rejection cause", func(t *testing.T) {
 		e := newEnv(t)
 		e.request("agent-req-0001", headA, "opened")
 		cancel(t, e, cancelInput(e, cyc1, "agent-cancel-0001"))
-		wantCode(t, e.svc.RecordCancelRejected(e.ctx, cyc1, cxl1, CodeHeadConflict), CodeInvalidArgument)
+		wantCode(t, e.svc.RecordCancelRejected(e.ctx, cyc1, cxl1, "NOT_A_CONTRACT_CODE"), CodeInvalidArgument)
 		wantCode(t, e.svc.ConfirmCancel(e.ctx, cyc1, "cxl_01jbq3x8n5r7t9v2w4y6z8a0e9"), CodeInvalidArgument)
 	})
 }

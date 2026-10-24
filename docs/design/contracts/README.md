@@ -47,7 +47,7 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
    - **superseded な cycle への遅着**: 旧 HEAD の実行結果が新 HEAD の受付後に届いた場合は拒否せず、**旧 cycle の結果参照として保存**する（その cycle は `terminalReason = superseded` のまま `result` だけを持つ）。新 cycle の `result` と状態は更新しない。GitHub 上の投稿は実在し、owl の outbox が再送し続けないようにするため。
 6. `execution.sequence` は同一 `producerId`・`producerEpoch` 内で増加する。同じ sequence・同じ内容は `duplicate`（冪等 ACK）、同じ sequence・違う内容は `SEQUENCE_CONFLICT`、より小さい sequence は `OBSERVATION_STALE`。
 7. 取消要求の間（`cancellation.state = requested`）は `terminal = false`。owl の無効化 ACK が返って初めて `confirmed` / `terminal = true`。
-8. 結果投稿が取消より先に確定していれば取消は `CANCEL_RESULT_POSTED`。GitHub 書込みが進行中または結果不明の間は `CANCEL_UNCONFIRMED` とし、**新 round に進めない**。
+8. 結果投稿が取消より先に確定していれば取消は `CANCEL_RESULT_POSTED`。取消の配送は、同じ取消 ID の系列を**常に 1 つ**だけ保つ：配送が生きている間（バックオフ中を含む）の同じ取消 key の再送は何も変えず、試行上限とバックオフを守る。配送が終わった後（上限到達・非再送の拒否）の同じ key の再送だけが、新しい系列としての明示的な再開になる。GitHub 書込みが進行中または結果不明の間は `CANCEL_UNCONFIRMED` とし、**新 round に進めない**。
 9. 非終端（`terminal = false`）の snapshot は `result = null` かつ `cancellation.state` が `none` / `requested` のいずれか。取消が確定した（`confirmed`）cycle は必ず terminal で、`result = null`。結果を持つ cycle は必ず terminal（`result` または `superseded`）。これらは schema の制約として検証する。
 
 ## snapshot の補足（設計文書に対する明確化）
@@ -122,7 +122,8 @@ Go テストが検証するのは**形**（各 `input` / `output` が schema に
 | 台帳コア（状態遷移・冪等性・snapshot 射影・outbox への登録） | `internal/reviewrequest` に実装済み（R1 段階 1）。出力はすべて本契約の schema で検証する |
 | 公開 MCP・Resource・repo ACL | 実装済み（R1 段階 2）。専用 App モード限定の opt-in（`REVIEW_RAVEN_REVIEW_REQUESTS` と `REVIEW_RAVEN_REQUEST_ACL`）。エラーは本契約の envelope を structured content で返す |
 | 内部面（`ingest_review_candidate` / `publish_review_result` / `publish_review_observation`） | 実装済み（R1 段階 3a）。別 MCP サーバー `/internal/mcp`・専用 proxy 秘密・サービス主体 ACL。opt-in（`REVIEW_RAVEN_INTERNAL_SURFACE`） |
-| outbox の配送 worker・thread-owl との相互接続 | 未実装（R1 段階 3b、O1） |
+| outbox の配送 worker（再送・バックオフ・上限、取消の再開） | 実装済み（R1 段階 3b-1）。`Deliverer` インターフェース経由 |
+| thread-owl 向けクライアントのサーバー配線・thread-owl（O1）との相互接続 | 未実装（R1 段階 3b-2、O1） |
 
 ## 契約を変えるとき
 
