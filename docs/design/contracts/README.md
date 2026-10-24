@@ -123,7 +123,8 @@ Go テストが検証するのは**形**（各 `input` / `output` が schema に
 | 公開 MCP・Resource・repo ACL | 実装済み（R1 段階 2）。専用 App モード限定の opt-in（`REVIEW_RAVEN_REVIEW_REQUESTS` と `REVIEW_RAVEN_REQUEST_ACL`）。エラーは本契約の envelope を structured content で返す |
 | 内部面（`ingest_review_candidate` / `publish_review_result` / `publish_review_observation`） | 実装済み（R1 段階 3a）。別 MCP サーバー `/internal/mcp`・専用 proxy 秘密・サービス主体 ACL。opt-in（`REVIEW_RAVEN_INTERNAL_SURFACE`） |
 | outbox の配送 worker（再送・バックオフ・上限、取消の再開） | 実装済み（R1 段階 3b-1）。`Deliverer` インターフェース経由 |
-| thread-owl 向けクライアントのサーバー配線・thread-owl（O1）との相互接続 | 未実装（R1 段階 3b-2、O1） |
+| thread-owl 向けの配送クライアント(`internal/owlclient`)とサーバーへの配線 | 実装済み（R1 段階 3b-2）。契約 schema で入力を検証する fake の thread-owl に対してテスト。opt-in（`REVIEW_RAVEN_OWL_INTERNAL_URL` / `_TOKEN`） |
+| thread-owl 側の内部面と、review-raven との相互接続 | 未実装（O1、thread-owl#279） |
 
 ## 契約を変えるとき
 

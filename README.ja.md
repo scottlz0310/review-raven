@@ -94,6 +94,9 @@ mcp-gateway で、**gateway から到達可能**なこのサーバーの内部�
 | `REVIEW_RAVEN_INTERNAL_SURFACE` | | `false` | `true` で、thread-owl と Squirrel 向けの内部面（サービス間）を、別パス `/internal/mcp` の別の MCP サーバーとして公開する。`ingest_review_candidate`・`publish_review_result`・`publish_review_observation` は agent 向けの tool 一覧に現れない。`REVIEW_RAVEN_REVIEW_REQUESTS=true`・`REVIEW_RAVEN_SERVICE_ACL`・`REVIEW_RAVEN_INTERNAL_PROXY_SECRET` が必須で、満たさなければ起動を止める |
 | `REVIEW_RAVEN_INTERNAL_PROXY_SECRET` | | _(未設定)_ | gateway が内部面のルートで提示する共有シークレット（32 文字以上）。`REVIEW_RAVEN_PROXY_SECRET` と異なる値にする（公開面のシークレットを持つ呼び出し元が内部面に到達できないようにするため） |
 | `REVIEW_RAVEN_SERVICE_ACL` | | _(未設定)_ | 内部面のアクセスリスト（JSON）。例: `{"services":{"svc-owl":{"actions":["ingest","publish_result"],"repos":["your-org/*"]},"svc-squirrel":{"actions":["observe"],"repos":["your-org/*"],"producers":["squirrel-notifier"]}}}`。サービス主体ごとに、呼べる操作（`ingest`・`publish_result`・`observe`）と、作用できる repo（`owner/repo` または `owner/*`）を指定する。`observe` を持つサービスは、送信できる `producers` も指定する。同じ名前を利用者（`REVIEW_RAVEN_REQUEST_ACL`）とサービスの両方に置けない。不正または空の設定は起動を止める |
+| `REVIEW_RAVEN_OWL_INTERNAL_URL` | | _(未設定)_ | thread-owl の内部面の MCP エンドポイント（通常は gateway のルート）。キューに載った候補と取消を thread-owl へ送る配送 worker を起動する。https、または loopback ホストの http のみ。`REVIEW_RAVEN_OWL_INTERNAL_TOKEN` と同時に指定し、`REVIEW_RAVEN_REVIEW_REQUESTS=true` が必須。片方だけの設定や平文での配送は起動を止める |
+| `REVIEW_RAVEN_OWL_INTERNAL_TOKEN` | | _(未設定)_ | thread-owl へ Bearer で提示するサービス資格情報（gateway がサービス主体へ対応付ける）。ログには出さない |
+| `REVIEW_RAVEN_DELIVERY_INTERVAL_SEC` | | `5` | 配送 worker が期限の来たメッセージを探す間隔（1〜3600 秒） |
 
 **非対応**（旧 `copilot-review-mcp` 系統で削除済み）: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
 
