@@ -107,6 +107,21 @@ REVIEW_RAVEN_REQUEST_ACL={"users":{"your-login":["your-org/*"]},"operators":["yo
 - 失敗は契約のエラー envelope（`code`・`retryable`）で返す。認可の失敗を自動で迂回せず、installation の対象外の PR は `PERMISSION_DENIED` で返す。
 - 通信の契約は [docs/design/contracts](design/contracts/README.md)。レビュー側への配送と実行観測はこの変更の対象外で、依頼は `dispatch: pending` のままになる。
 
+### thread-owl と Squirrel 向けの内部面（opt-in）
+
+レビュー側からの報告は、`/internal/mcp` の**別の MCP サーバー**で受ける。tool（`ingest_review_candidate`・`publish_review_result`・`publish_review_observation`）は agent 向けの tool 一覧に現れず、ルートは専用の proxy シークレットを持つ。
+
+```env
+REVIEW_RAVEN_INTERNAL_SURFACE=true
+REVIEW_RAVEN_INTERNAL_PROXY_SECRET=<32 文字以上。REVIEW_RAVEN_PROXY_SECRET とは別の値>
+REVIEW_RAVEN_SERVICE_ACL={"services":{"svc-owl":{"actions":["ingest","publish_result"],"repos":["your-org/*"]},"svc-squirrel":{"actions":["observe"],"repos":["your-org/*"],"producers":["squirrel-notifier"]}}}
+```
+
+- レビュー依頼の tool（`REVIEW_RAVEN_REVIEW_REQUESTS=true`）が前提。台帳・ACL・シークレットのいずれかが欠ける、またはシークレットが公開面と同じだと起動を止める。
+- 認可は、サービス主体・操作・repo ごと。サービスは自分に列挙された操作だけを呼べ、`observe` を持つサービスは、列挙された `producers` としてだけ送信できる。同じ名前を利用者とサービスの両方に置けず、公開面の利用者は内部 tool を呼べない。
+- `publish_review_result` は、レビュー側の GitHub 投稿への参照だけを保存する。superseded な cycle への結果は旧 cycle に保存し、取消済み cycle への結果は `CANDIDATE_CANCELLED`、保持期限後に削除された依頼への遅延配送は `DELIVERY_EXPIRED`。
+- 観測は、依頼を配送した candidate に対するものだけを受理し、`producerEpoch` と `sequence` で順序を検証する。raven から thread-owl への候補の配送（outbox worker）は別の変更で、それまでは依頼は `dispatch: pending` のままになり、観測は `PRODUCER_NOT_ASSIGNED` で拒否される。
+
 ### health check
 
 ```bash

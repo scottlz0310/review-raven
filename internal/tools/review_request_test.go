@@ -31,6 +31,16 @@ const (
 
 var rrSecret = strings.Repeat("s", 32)
 
+// rrPublicACL is the user access list of the test servers.
+const rrPublicACL = `{
+	"users": {
+		"alice": ["scottlz0310/*"],
+		"carol": ["scottlz0310/*"],
+		"dave": ["scottlz0310/*"]
+	},
+	"operators": ["carol"]
+}`
+
 // fixedHeads is a HeadResolver backed by a map ("owner/repo#pr" → sha).
 type fixedHeads map[string]string
 
@@ -67,14 +77,7 @@ func newRequestFixture(t *testing.T, appMode bool) *requestFixture {
 func newRequestFixtureWith(t *testing.T, appMode bool, adjust func(*reviewrequest.Deps)) *requestFixture {
 	t.Helper()
 	db := openServerTestDB(t)
-	acl, err := reviewrequest.ParseACL(`{
-		"users": {
-			"alice": ["scottlz0310/*"],
-			"carol": ["scottlz0310/*"],
-			"dave": ["scottlz0310/*"]
-		},
-		"operators": ["carol"]
-	}`)
+	acl, err := reviewrequest.ParseACL(rrPublicACL)
 	if err != nil {
 		t.Fatal(err)
 	}

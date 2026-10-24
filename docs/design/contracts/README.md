@@ -121,7 +121,8 @@ Go テストが検証するのは**形**（各 `input` / `output` が schema に
 |---|---|
 | 台帳コア（状態遷移・冪等性・snapshot 射影・outbox への登録） | `internal/reviewrequest` に実装済み（R1 段階 1）。出力はすべて本契約の schema で検証する |
 | 公開 MCP・Resource・repo ACL | 実装済み（R1 段階 2）。専用 App モード限定の opt-in（`REVIEW_RAVEN_REVIEW_REQUESTS` と `REVIEW_RAVEN_REQUEST_ACL`）。エラーは本契約の envelope を structured content で返す |
-| outbox の配送・内部面・thread-owl との相互接続 | 未実装（R1 段階 3、O1） |
+| 内部面（`ingest_review_candidate` / `publish_review_result` / `publish_review_observation`） | 実装済み（R1 段階 3a）。別 MCP サーバー `/internal/mcp`・専用 proxy 秘密・サービス主体 ACL。opt-in（`REVIEW_RAVEN_INTERNAL_SURFACE`） |
+| outbox の配送 worker・thread-owl との相互接続 | 未実装（R1 段階 3b、O1） |
 
 ## 契約を変えるとき
 

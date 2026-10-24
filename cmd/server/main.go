@@ -69,6 +69,7 @@ func main() {
 	// MCP endpoints (auth required) — Streamable HTTP transport (stateless, MCP 2026-07-28)
 	threshold := time.Duration(cfg.inProgressThresholdSec) * time.Second
 	builderOpts := tools.BuilderOptions{TrustedCommentAuthors: cfg.trustedCommentAuthors}
+	var ledger *reviewrequest.Service
 	if cfg.githubApp != nil {
 		source, err := githubapp.NewTokenSource(cfg.githubApp.Config)
 		if err != nil {
@@ -87,12 +88,22 @@ func main() {
 			"installation_id", cfg.githubApp.InstallationID, "owner", cfg.githubApp.Owner)
 
 		if cfg.reviewRequestACL != nil {
-			// 依頼の台帳は専用Appモードだけで、保護設定の ACL を認可に使う。内部面（owl / Squirrel）の
-			// producer は別の段階で有効にするため、ここでは誰も観測を送れない。
-			ledger, err := reviewrequest.NewService(context.Background(), db.SQL(), reviewrequest.Deps{
-				Authorizer: cfg.reviewRequestACL,
+			// 依頼の台帳は専用Appモードだけで、保護設定の ACL を認可に使う。内部面（owl / Squirrel）を
+			// 有効にしない限り、観測を送れる producer は存在しない。
+			var authorizer reviewrequest.Authorizer = cfg.reviewRequestACL
+			var producers reviewrequest.ProducerPolicy = reviewrequest.DenyAllProducers{}
+			if cfg.serviceACL != nil {
+				authorizer, err = reviewrequest.NewSplitAuthorizer(cfg.reviewRequestACL, cfg.serviceACL)
+				if err != nil {
+					slog.Error("利用者とサービスのアクセスリストが不正です", "err", err)
+					os.Exit(1)
+				}
+				producers = cfg.serviceACL
+			}
+			ledger, err = reviewrequest.NewService(context.Background(), db.SQL(), reviewrequest.Deps{
+				Authorizer: authorizer,
 				Heads:      tools.NewInstallationHeadResolver(threshold, source),
-				Producers:  reviewrequest.DenyAllProducers{},
+				Producers:  producers,
 				Settings:   reviewrequest.DefaultSettings(),
 			})
 			if err != nil {
@@ -118,6 +129,17 @@ func main() {
 	mux.Handle("/mcp", authMiddleware(mcpHandler))
 	mux.Handle("/mcp/", authMiddleware(mcpHandler))
 
+	// 内部面（サービス主体向け）は agent 向けの /mcp とは別のサーバー・別の proxy 秘密にする。
+	var internalHandler *tools.StreamableHandler
+	if cfg.serviceACL != nil {
+		internalHandler = tools.BuildInternalHandler(ledger)
+		defer internalHandler.Close()
+		internalAuth := middleware.AppProxyAuth(cfg.internalProxySecret)
+		mux.Handle("/internal/mcp", internalAuth(internalHandler))
+		mux.Handle("/internal/mcp/", internalAuth(internalHandler))
+		slog.Info("レビュー依頼の内部面を有効にしました", "services", cfg.serviceACL.Services())
+	}
+
 	addr := net.JoinHostPort(cfg.bindAddr, cfg.port)
 	slog.Info("review-raven starting", "addr", addr)
 	// WriteTimeout remains unlimited because legacy wait_for_copilot_review still exists
@@ -131,6 +153,9 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 	server.RegisterOnShutdown(mcpHandler.Close)
+	if internalHandler != nil {
+		server.RegisterOnShutdown(internalHandler.Close)
+	}
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		mcpHandler.Close()
 		slog.Error("server error", "err", err)
@@ -151,6 +176,10 @@ type config struct {
 	trustedCommentAuthors  []string
 	// reviewRequestACL is non-nil only when the review-request tools are enabled.
 	reviewRequestACL *reviewrequest.ACL
+	// serviceACL and internalProxySecret are set only when the internal
+	// (service-to-service) surface is enabled.
+	serviceACL          *reviewrequest.ServiceACL
+	internalProxySecret string
 }
 
 func loadConfig() config {
@@ -192,6 +221,17 @@ func loadConfig() config {
 		fmt.Fprintf(os.Stderr, "review-raven: invalid review request configuration: %v\n", err)
 		os.Exit(1)
 	}
+	publicProxySecret := ""
+	if appConfig != nil {
+		publicProxySecret = appConfig.ProxySecret
+	}
+	serviceACL, internalSecret, err := loadInternalSurfaceConfig(
+		os.Getenv("REVIEW_RAVEN_INTERNAL_SURFACE"), os.Getenv("REVIEW_RAVEN_SERVICE_ACL"),
+		os.Getenv("REVIEW_RAVEN_INTERNAL_PROXY_SECRET"), publicProxySecret, reviewACL != nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "review-raven: invalid internal surface configuration: %v\n", err)
+		os.Exit(1)
+	}
 	return config{
 		authMode:               mode,
 		githubApp:              appConfig,
@@ -204,7 +244,42 @@ func loadConfig() config {
 		gatewayInternalSecret:  gatewaySecret,
 		trustedCommentAuthors:  trusted,
 		reviewRequestACL:       reviewACL,
+		serviceACL:             serviceACL,
+		internalProxySecret:    internalSecret,
 	}
+}
+
+// loadInternalSurfaceConfig reads the opt-in switch, the service ACL and the
+// proxy secret of the internal (service-to-service) surface. It returns a nil
+// ACL when the surface is off.
+//
+// The surface needs the review-request ledger, a service ACL, and its own proxy
+// secret that differs from the public one: a caller holding the public secret
+// must not be able to reach the internal route. Enabling it without any of
+// these is a startup error, never a fallback.
+func loadInternalSurfaceConfig(enabled, aclJSON, secret, publicSecret string, ledgerEnabled bool) (*reviewrequest.ServiceACL, string, error) {
+	switch strings.ToLower(strings.TrimSpace(enabled)) {
+	case "", "false", "0", "off":
+		return nil, "", nil
+	case "true", "1", "on":
+	default:
+		return nil, "", fmt.Errorf("REVIEW_RAVEN_INTERNAL_SURFACE must be true or false, got %q", enabled)
+	}
+	if !ledgerEnabled {
+		return nil, "", errors.New("REVIEW_RAVEN_INTERNAL_SURFACE=true requires REVIEW_RAVEN_REVIEW_REQUESTS=true")
+	}
+	secret = strings.TrimSpace(secret)
+	if len(secret) < 32 {
+		return nil, "", errors.New("REVIEW_RAVEN_INTERNAL_PROXY_SECRET must be a dedicated shared secret of at least 32 characters")
+	}
+	if secret == strings.TrimSpace(publicSecret) {
+		return nil, "", errors.New("REVIEW_RAVEN_INTERNAL_PROXY_SECRET must differ from REVIEW_RAVEN_PROXY_SECRET")
+	}
+	acl, err := reviewrequest.ParseServiceACL(aclJSON)
+	if err != nil {
+		return nil, "", fmt.Errorf("REVIEW_RAVEN_SERVICE_ACL: %w", err)
+	}
+	return acl, secret, nil
 }
 
 // loadReviewRequestConfig reads the opt-in switch and the access list of the
