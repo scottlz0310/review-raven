@@ -430,3 +430,58 @@ type fixedHead string
 func (h fixedHead) CurrentHead(context.Context, string, string, int) (string, error) {
 	return string(h), nil
 }
+
+// 旧実行の GitHub 書込みが未確定(false/欠落)の ACK では取消を確定せず、同じ取消 ID で再送する。
+func TestCancelWithoutReconciledGitHubWriteStaysUnconfirmed(t *testing.T) {
+	cases := []struct {
+		name       string
+		reconciled any // nil: field omitted
+	}{
+		{"not reconciled", false},
+		{"omitted", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			owl := newFakeOwl(t)
+			owl.onCancel = func(in map[string]any) (any, *reviewrequest.Error) {
+				out := map[string]any{"schemaVersion": 1, "cancelId": in["cancelId"], "acknowledged": true, "candidateStatus": "started"}
+				if tc.reconciled != nil {
+					out["githubWriteReconciled"] = tc.reconciled
+				}
+				return out, nil
+			}
+			_, err := owl.client().Cancel(context.Background(), cancelMessage())
+			wantContractError(t, err, reviewrequest.CodeCancelUnconfirmed, true)
+		})
+	}
+}
+
+// リダイレクトは追わない: 転送先に資格情報を送らない(別ホストへの転送、https から http への降格)。
+func TestRedirectIsNeverFollowedWithTheCredential(t *testing.T) {
+	var mu sync.Mutex
+	var reached []string
+	target := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		reached = append(reached, r.Header.Get("Authorization"))
+		mu.Unlock()
+	}))
+	t.Cleanup(target.Close)
+
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(origin.Close)
+
+	client, err := New(Config{Endpoint: origin.URL, Token: testToken, HTTPClient: origin.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Accept(context.Background(), acceptMessage())
+	wantContractError(t, err, reviewrequest.CodeUnavailable, true)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reached) != 0 {
+		t.Fatalf("the redirect target received %d request(s) (Authorization %q)", len(reached), reached)
+	}
+}

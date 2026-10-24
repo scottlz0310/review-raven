@@ -114,13 +114,21 @@ func (c *Client) Cancel(ctx context.Context, msg reviewrequest.CancelMessage) (r
 		CancelID        string `json:"cancelId"`
 		Acknowledged    bool   `json:"acknowledged"`
 		CandidateStatus string `json:"candidateStatus"`
+		// 欠落と false を区別する（契約は const:true）。
+		GithubWriteReconciled *bool `json:"githubWriteReconciled"`
 	}
 	if err := c.call(ctx, "cancel_review_candidate", msg, &out); err != nil {
 		return reviewrequest.CancelResult{}, err
 	}
-	// ACK でないものを確定として扱わない（取消の確定は旧候補の無効化の確認が前提）。
+	// ACK でないもの、旧実行の GitHub 書込みが未確定のものを確定として扱わない
+	// （取消の確定は旧候補の無効化と書込み結果の確定が前提）。
 	if !out.Acknowledged || out.CancelID != msg.CancelID {
 		return reviewrequest.CancelResult{}, unavailable("thread-owl did not acknowledge the cancellation")
+	}
+	if out.GithubWriteReconciled == nil || !*out.GithubWriteReconciled {
+		return reviewrequest.CancelResult{}, &reviewrequest.Error{
+			Code: reviewrequest.CodeCancelUnconfirmed, Message: "thread-owl has not reconciled the GitHub write of the cancelled candidate", Retryable: true,
+		}
 	}
 	return reviewrequest.CancelResult{CancelID: out.CancelID, CandidateStatus: out.CandidateStatus}, nil
 }
@@ -129,6 +137,9 @@ func (c *Client) call(ctx context.Context, tool string, args, out any) error {
 	rec := &statusRecorder{base: c.http.Transport, token: c.token}
 	httpClient := *c.http
 	httpClient.Transport = rec
+	// 資格情報を付けた要求の転送先は ValidateEndpoint で検証できないため、追わない
+	// （転送は 3xx のまま UNAVAILABLE になり、試行上限で止まる）。
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "review-raven-delivery", Version: "0.6.0"}, nil)
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{

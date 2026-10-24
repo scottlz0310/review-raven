@@ -134,7 +134,7 @@ REVIEW_RAVEN_OWL_INTERNAL_TOKEN=<service credential issued for review-raven>
 
 - Set the URL and the credential together; they require the review-request ledger. The URL must be https (http only on a loopback host); anything else stops startup.
 - Delivery is at-least-once and retried with an exponential, jittered backoff up to the attempt limit (8 by default); then the request is `dispatch: failed` (`UNAVAILABLE`). A refused credential (HTTP 401/403) or a rejected request is final and published as the cause (`PERMISSION_DENIED` / `INVALID_ARGUMENT`) — it is not retried or sent through another route. An error answered by thread-owl keeps its contract code.
-- A cancellation is confirmed only by thread-owl's acknowledgement. `CANCEL_RESULT_POSTED` withdraws it, and `CANCEL_UNCONFIRMED` is retried with the same cancel id. Repeating the same `idempotencyKey` of `cancel_review_request` resumes a cancellation whose delivery has ended; while a retry series is alive it changes nothing.
+- A cancellation is confirmed only by thread-owl's acknowledgement. `CANCEL_RESULT_POSTED` withdraws it, and `CANCEL_UNCONFIRMED` is retried with the same cancel id, as is an acknowledgement whose `githubWriteReconciled` is not true. Redirects are never followed. Repeating the same `idempotencyKey` of `cancel_review_request` resumes a cancellation whose delivery has ended; while a retry series is alive it changes nothing.
 - The credential is issued, rotated and revoked by the deployment (Mcp-Docker), not by this server. It is sent only as a Bearer token and is never written to logs or error messages.
 
 ### Check health
