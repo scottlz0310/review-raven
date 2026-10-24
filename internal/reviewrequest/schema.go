@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS request_outbox (
     attempts        INTEGER NOT NULL DEFAULT 0,
     next_attempt_at TEXT    NOT NULL,
     delivered_at    TEXT,
+    outcome         TEXT,
     created_at      TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_request_outbox_pending ON request_outbox(delivered_at, next_attempt_at);
@@ -124,6 +125,46 @@ const (
 func applySchema(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, ledgerSchema); err != nil {
 		return fmt.Errorf("apply review request ledger schema: %w", err)
+	}
+	// CREATE TABLE IF NOT EXISTS は既存の表へ列を足さない。台帳を先に有効にした DB を移行する。
+	if err := ensureColumn(ctx, db, "request_outbox", "outcome", "TEXT"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensureColumn adds a column to an existing table when it is missing. The table
+// info is read first rather than matching a driver error message.
+func ensureColumn(ctx context.Context, db *sql.DB, table, column, definition string) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return fmt.Errorf("read %s columns: %w", table, err)
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan %s columns: %w", table, err)
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate %s columns: %w", table, err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close %s columns: %w", table, err)
+	}
+	if found {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN "+column+" "+definition); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
 	}
 	return nil
 }

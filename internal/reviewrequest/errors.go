@@ -28,6 +28,18 @@ const (
 	CodeUnavailable         = "UNAVAILABLE"
 )
 
+// contractErrorCodes is the set of codes the contract defines
+// (docs/design/contracts/schemas/common.schema.json).
+var contractErrorCodes = map[string]bool{
+	CodeInvalidArgument: true, CodePermissionDenied: true, CodeRequestNotFound: true,
+	CodeRequestExpired: true, CodeHeadConflict: true, CodeIdempotencyConflict: true,
+	CodeRevisionConflict: true, CodeCancelResultPosted: true, CodeCancelUnconfirmed: true,
+	CodeCandidateCancelled: true, CodeOriginRejected: true, CodeDeliveryExpired: true,
+	CodeEpochStale: true, CodeSequenceConflict: true, CodeObservationStale: true,
+	CodeProducerNotAssigned: true, CodeResultVersionStale: true, CodeResultHeadMismatch: true,
+	CodeUnavailable: true,
+}
+
 // retryable lists the only codes a caller may retry: a lost ACK / 5xx-like
 // failure, or a cancellation whose GitHub write outcome is still unknown.
 var retryable = map[string]bool{CodeUnavailable: true, CodeCancelUnconfirmed: true}

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,9 @@ type Deps struct {
 	Settings   Settings
 	Now        func() time.Time
 	NewID      func(prefix string) string
+	// Jitter returns a value in [0, 1) used to spread delivery retries. Nil uses
+	// math/rand/v2; tests inject a fixed value.
+	Jitter func() float64
 }
 
 // Service is the review-request ledger.
@@ -102,6 +106,9 @@ func NewService(ctx context.Context, db *sql.DB, deps Deps) (*Service, error) {
 	}
 	if deps.NewID == nil {
 		deps.NewID = NewID
+	}
+	if deps.Jitter == nil {
+		deps.Jitter = rand.Float64
 	}
 	if err := deps.Settings.Validate(); err != nil {
 		return nil, fmt.Errorf("reviewrequest: invalid settings: %w", err)

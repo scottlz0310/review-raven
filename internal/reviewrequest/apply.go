@@ -278,14 +278,15 @@ func (s *Service) ConfirmCancel(ctx context.Context, cycleID, cancelID string) e
 
 // RecordCancelRejected records why the cancellation was not acknowledged.
 //   - CANCEL_RESULT_POSTED: the result won; the cancellation is withdrawn.
-//   - CANCEL_UNCONFIRMED / UNAVAILABLE: still requested and not terminal; the
-//     cause is published and the same cancel key can resume delivery.
+//   - any other contract code (CANCEL_UNCONFIRMED, UNAVAILABLE, a permission
+//     failure, ...): the cancellation stays requested and not terminal, the cause
+//     is published, and the same cancel key can resume delivery.
 func (s *Service) RecordCancelRejected(ctx context.Context, cycleID, cancelID, code string) error {
 	if !reCycleID.MatchString(cycleID) {
 		return newError(CodeInvalidArgument, "cycleId must match the contract pattern")
 	}
-	if code != CodeCancelResultPosted && code != CodeCancelUnconfirmed && code != CodeUnavailable {
-		return newError(CodeInvalidArgument, "unsupported cancellation rejection code")
+	if !contractErrorCodes[code] {
+		return newError(CodeInvalidArgument, "unknown cancellation rejection code")
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		c, err := loadCycle(ctx, tx, cycleID)
