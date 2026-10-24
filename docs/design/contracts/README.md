@@ -41,8 +41,8 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
 
 1. `snapshot.result.headSha` は `snapshot.expectedHeadSha` と一致する。`publish_review_result.headSha` が cycle の HEAD と違えば `RESULT_HEAD_MISMATCH`。
 2. `snapshotRevision` は cycle ごとに単調増加し、状態が変わるたびに増える。同一内容の再送は増やさない。
-3. `round` は PR ごとの永続単調増加値で、Squirrel のローカル round・owl の旧 round とは別物。`cycleId` は再起動後も重複せず、別 cycle に再利用しない。
-4. 同じ `idempotencyKey` は**認証主体と PR の scope**で一意。同一 payload は同じ cycle、payload 違いは `IDEMPOTENCY_CONFLICT`。key が違っても同一 PR/HEAD/reason の**未完了**依頼は既存 cycle に結合する。取消が確定した cycle は旧 key・旧 `sourceId` で旧 cycle を返し続け、新 round を作らない。
+3. `round` は PR ごとの永続単調増加値で、Squirrel のローカル round・owl の旧 round とは別物。`cycleId` は再起動後も重複せず、別 cycle に再利用しない。`round` は cycle の削除（保持期限）後も残る PR 単位のカウンタから採番し、削除・再起動をまたいでも再利用しない。
+4. 同じ `idempotencyKey` は**認証主体と PR の scope**で一意。同一 payload は同じ cycle、payload 違いは `IDEMPOTENCY_CONFLICT`。key が違っても同一 PR/HEAD/reason の**未完了**依頼は既存 cycle に結合する。**取消要求中（`cancellation.state = requested`）の cycle は、同じ HEAD への再依頼を reason に関わらず結合する**（GitHub 書込み結果が不明な旧候補と新候補を並行させない）。新しい HEAD は別の対象なので新 cycle とし、旧 cycle を superseded にする。取消が確定した cycle は旧 key・旧 `sourceId` で旧 cycle を返し続け、新 round を作らない。
 5. `resultVersion` は owl で単調増加。raven は、cycle の `expectedHeadSha` と異なる HEAD の結果（`RESULT_HEAD_MISMATCH`）、古い version（`RESULT_VERSION_STALE`）、取消確定済み cycle への結果（`CANDIDATE_CANCELLED`）を拒否する。結果到着後の実行終了や heartbeat で `result` / `terminal` を退行させない。
    - **superseded な cycle への遅着**: 旧 HEAD の実行結果が新 HEAD の受付後に届いた場合は拒否せず、**旧 cycle の結果参照として保存**する（その cycle は `terminalReason = superseded` のまま `result` だけを持つ）。新 cycle の `result` と状態は更新しない。GitHub 上の投稿は実在し、owl の outbox が再送し続けないようにするため。
 6. `execution.sequence` は同一 `producerId`・`producerEpoch` 内で増加する。同じ sequence・同じ内容は `duplicate`（冪等 ACK）、同じ sequence・違う内容は `SEQUENCE_CONFLICT`、より小さい sequence は `OBSERVATION_STALE`。
@@ -86,7 +86,7 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
 | `CANCEL_UNCONFIRMED` | GitHub 書込みが進行中・結果不明。取消 ACK を保留する | 可（同じ取消 ID で再試行） |
 | `CANDIDATE_CANCELLED` | 取消済みの候補への受付・起動・結果投稿 | 不可 |
 | `ORIGIN_REJECTED` | owl の origin / 作成者 / fork policy に違反 | 不可 |
-| `DELIVERY_EXPIRED` | 保持期限切れ後の遅延再送（410 相当） | 不可 |
+| `DELIVERY_EXPIRED` | 内部面（owl / Squirrel → raven）から、保持期限後に削除された依頼への遅延配送（410 相当）。公開面の読み取りは `REQUEST_EXPIRED` | 不可 |
 | `EPOCH_STALE` | 失効した producerEpoch | 不可 |
 | `SEQUENCE_CONFLICT` | 同じ sequence で内容が違う | 不可 |
 | `OBSERVATION_STALE` | 現在より古い sequence の遅着 | 不可 |
@@ -101,7 +101,7 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
 
 | 項目 | 既定 | 下限・制約 |
 |---|---|---|
-| 完了・superseded・cancelled の依頼 / 冪等性台帳 / 取消記録 / owl の結果索引 | 30 日 | 30 日以上（取消記録は旧受付の再送可能期間以上） |
+| 完了・superseded・cancelled の依頼 / 冪等性台帳 / 取消記録 / owl の結果索引 | 30 日 | 30 日以上（取消記録は旧受付の再送可能期間以上）。**保持期間は互いに独立**で、依頼を削除しても冪等性 key・source の束縛は自身の期間まで残り、取消記録は**取消自身の時計**で保持する：無効化 ACK 前（`requested`）の取消は削除せず、確定（`confirmed`）した取消は確定時刻から数えて取消記録の期間まで残す（superseded などで先に終端になっていても、遅れて作られた取消記録を早期に消さない）。削除済みの依頼に届く旧 key・旧 source の再送は新 cycle を作らず、失効として返す |
 | 配送の最大試行回数 | 8 | 1〜20 |
 | 配送の初期バックオフ / 倍率 / 上限 / ジッタ | 1000 ms / 2 / 60000 ms / 0.2 | 100 ms 以上 / 1 以上 / 100 ms 以上 / 0〜1 |
 | 再送の対象 | `network`, `http5xx` | 認証・権限・schema 競合は対象外 |
@@ -114,6 +114,14 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
 `scenarios/scenarios.json` は、設計文書の「後続実装の必須検証例」を、実装から独立した順序つきの呼び出しとして表す。各 step は `actor` / `op` / `input` / `expect` を持ち、`expect` は `error`（code）・`output`（出力 schema に適合する完全な出力）・`snapshot`（snapshot の項目パス → 期待値）のどれか。`event` は呼び出し以外の前提（時間経過・障害など）を表す。
 
 Go テストが検証するのは**形**（各 `input` / `output` が schema に適合する、`snapshot` のパスが実在する、全エラー code がいずれかのシナリオで使われる）であり、実装の挙動ではない。R1 / O1 は同じシナリオを自分の実装に対して実行する相互接続テストを実装する。
+
+## 実装状況
+
+| 範囲 | 状況 |
+|---|---|
+| 台帳コア（状態遷移・冪等性・snapshot 射影・outbox への登録） | `internal/reviewrequest` に実装済み（R1 段階 1）。出力はすべて本契約の schema で検証する |
+| 公開 MCP・Resource・repo ACL | 未実装（R1 段階 2） |
+| outbox の配送・内部面・thread-owl との相互接続 | 未実装（R1 段階 3、O1） |
 
 ## 契約を変えるとき
 

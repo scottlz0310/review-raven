@@ -8,7 +8,9 @@
 - [x] PR #146のquestion: 結果なし失敗cycleの明示取消・無効化確認・同HEAD新round受付と、R1/O1の受け入れテストを定義する。
 - [x] 設計レビュー後に後続Issueを実起票し、squirrel-notifier#497へ依存契約を反映する（2026-10-24、Z1を除く7件を起票し#497へ設計コメントを追記）。
 - [x] R1/O1/I1共通の契約v1（JSON Schema・golden fixture・共通シナリオ・整合テスト）を[docs/design/contracts](design/contracts/README.md)に確定する。
-- [ ] R1（[#147](https://github.com/scottlz0310/review-raven/issues/147)）を契約v1に沿って実装し、O1（thread-owl#279）とシナリオで相互接続テストを行う。
+- [x] R1段階1（[#147](https://github.com/scottlz0310/review-raven/issues/147)）：台帳コア（SQLite・冪等性・結合・superseded・取消・結果参照・観測・snapshot射影）を`internal/reviewrequest`に実装する。MCPには公開しない。
+- [ ] R1段階2：公開MCP（`request_review` / `get_review_request` / `cancel_review_request`）・`review-raven://requests/{cycleId}` Resource・repo ACLによる認可を追加する（専用Appモードの公開面）。
+- [ ] R1段階3：outboxの配送worker（再送・バックオフ・上限）と、内部面（`ingest_review_candidate` / `publish_review_result` / `publish_review_observation`）を追加し、O1（thread-owl#279）とシナリオで相互接続テストを行う。
 - [ ] 新API・永続化・publisher・CLI逐次出力・skill切替を後続Issueで実装・配布・実機検証する。
 
 設計: [責務境界](design/review-responsibility-boundaries.md)、[後続Issue案](design/review-responsibility-followups.md)。#144全体の完了と製品移行完了を混同しない。
