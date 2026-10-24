@@ -312,10 +312,13 @@ func (s *Service) RecordCancelRejected(ctx context.Context, cycleID, cancelID, c
 // were removed.
 //
 //   - A finished request is removed after FinishedRequestRetention, leaving a
-//     tombstone so the ID answers REQUEST_EXPIRED and is never reused. A request
-//     that carries a cancellation is kept for the longer of that and
-//     CancellationRecordRetention, because the record must outlive the window in
-//     which an old acceptance can still be redelivered.
+//     tombstone so the ID answers REQUEST_EXPIRED and is never reused.
+//   - A cancellation is a separate record with its own clock. While it is only
+//     requested (no acknowledgement yet) the request is never removed, because
+//     its delivery and recovery would be lost. Once confirmed, the request is kept
+//     for CancellationRecordRetention counted from the confirmation (not from the
+//     time the request became terminal, which may be much earlier), so the record
+//     outlives the window in which an old acceptance can still be redelivered.
 //   - Idempotency keys and source bindings are NOT removed with their request:
 //     they live for their own retention. A replay of an old key or source whose
 //     request was already removed therefore resolves to the tombstone (an
@@ -325,7 +328,7 @@ func (s *Service) PurgeExpired(ctx context.Context) (int, error) {
 	now := s.d.Now().UTC()
 	st := s.d.Settings
 	finishedCutoff := now.Add(-st.FinishedRequestRetention).Format(timeLayout)
-	cancelledCutoff := now.Add(-max(st.FinishedRequestRetention, st.CancellationRecordRetention)).Format(timeLayout)
+	confirmedCutoff := now.Add(-st.CancellationRecordRetention).Format(timeLayout)
 	keyCutoff := now.Add(-st.IdempotencyRetention).Format(timeLayout)
 	sourceCutoff := now.Add(-max(st.IdempotencyRetention, st.CancellationRecordRetention)).Format(timeLayout)
 
@@ -334,7 +337,8 @@ func (s *Service) PurgeExpired(ctx context.Context) (int, error) {
 		rows, err := tx.QueryContext(ctx,
 			`SELECT cycle_id FROM review_requests
 			  WHERE terminal_at IS NOT NULL AND terminal_at < ?
-			    AND (cancel_state = 'none' OR terminal_at < ?)`, finishedCutoff, cancelledCutoff)
+			    AND (cancel_state = 'none'
+			         OR (cancel_state = 'confirmed' AND cancel_confirmed_at < ?))`, finishedCutoff, confirmedCutoff)
 		if err != nil {
 			return fmt.Errorf("select expired requests: %w", err)
 		}

@@ -170,3 +170,57 @@ func TestDeliveryToPurgedRequestIsExpired(t *testing.T) {
 	_, err = e.svc.Snapshot(e.ctx, agent, cyc1)
 	wantCode(t, err, CodeRequestExpired)
 }
+
+// 取消記録は取消自身の時計で保持する。superseded から時間を置いて取消した場合、
+// terminal_at 起算で取消記録・未確認の取消 outbox を早期に消してはならない。
+func TestLateCancellationKeepsItsOwnRetention(t *testing.T) {
+	supersededThenCancelled := func(t *testing.T) *env {
+		t.Helper()
+		e := newEnv(t)
+		e.request("agent-req-0001", headA, "opened")
+		e.heads.set(headB)
+		e.request("agent-req-0002", headB, "synchronized") // day 0: cyc1 が superseded
+		e.clock.advance(29 * day)
+		cancel(t, e, cancelInput(e, cyc1, "agent-cancel-0001")) // day 29: 取消を要求
+		return e
+	}
+
+	t.Run("an unacknowledged cancellation is never purged", func(t *testing.T) {
+		e := supersededThenCancelled(t)
+		e.clock.advance(2 * day) // day 31: 取消から 2 日
+		if n, err := e.svc.PurgeExpired(e.ctx); err != nil || n != 0 {
+			t.Fatalf("PurgeExpired() = %d, %v; a pending cancellation must survive", n, err)
+		}
+		if snap := e.snapshot(cyc1); snap.Cancellation.State != CancelRequested {
+			t.Fatalf("pending cancellation lost: %+v", snap.Cancellation)
+		}
+		if n := e.outboxCount(outboxCancel); n != 1 {
+			t.Fatalf("cancel messages = %d, want 1 (the undelivered cancellation must not be dropped)", n)
+		}
+
+		// 数か月経っても、確認されていない取消は復旧手段として残る。
+		e.clock.advance(180 * day)
+		if n, err := e.svc.PurgeExpired(e.ctx); err != nil || n != 0 {
+			t.Fatalf("PurgeExpired() = %d, %v; an unacknowledged cancellation must never be purged", n, err)
+		}
+	})
+
+	t.Run("a confirmed cancellation is kept from its confirmation", func(t *testing.T) {
+		e := supersededThenCancelled(t)
+		e.clock.advance(2 * day) // day 31
+		if err := e.svc.ConfirmCancel(e.ctx, cyc1, cxl1); err != nil {
+			t.Fatal(err)
+		}
+
+		e.clock.advance(27 * day) // day 58: 確定から 27 日
+		if n, err := e.svc.PurgeExpired(e.ctx); err != nil || n != 0 {
+			t.Fatalf("PurgeExpired() = %d, %v; the record must be kept 30 days from the confirmation", n, err)
+		}
+		e.clock.advance(4 * day) // day 62: 確定から 31 日
+		if n, err := e.svc.PurgeExpired(e.ctx); err != nil || n != 1 {
+			t.Fatalf("PurgeExpired() = %d, %v; want the cancelled cycle after its retention", n, err)
+		}
+		_, err := e.svc.Snapshot(e.ctx, agent, cyc1)
+		wantCode(t, err, CodeRequestExpired)
+	})
+}
