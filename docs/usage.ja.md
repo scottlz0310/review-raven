@@ -101,6 +101,7 @@ REVIEW_RAVEN_REQUEST_ACL={"users":{"your-login":["your-org/*"]},"operators":["yo
 ```
 
 - `users` は、login が依頼・読取できる repo（`owner/repo` または `owner/*`）。自分の依頼は取り消せ、`operators` は他の主体の依頼も取り消せる。
+- すべての入力に契約の版 `schemaVersion: 1` が必須（それ以外の値は `INVALID_ARGUMENT`）。
 - 依頼は `expectedHeadSha` に固定する。現在の HEAD と違えば `HEAD_CONFLICT`。同じ `idempotencyKey` と内容は同じ cycle を返す。`dispatch: pending` は「未配送」で、「queue 登録済み」ではない。
 - 進捗は、返された `resourceUri` を購読して受け取る。`terminal` が true になるのは、結果参照あり・`superseded`・`cancelled` のときだけ（`terminalReason` で区別する）。プロセス終了や配送失敗だけでは terminal にならない。
 - 失敗は契約のエラー envelope（`code`・`retryable`）で返す。認可の失敗を自動で迂回せず、installation の対象外の PR は `PERMISSION_DENIED` で返す。

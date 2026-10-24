@@ -101,6 +101,7 @@ REVIEW_RAVEN_REQUEST_ACL={"users":{"your-login":["your-org/*"]},"operators":["yo
 ```
 
 - `users` lists the repositories (`owner/repo`, or `owner/*`) a login may request and read. A principal may cancel its own requests; `operators` may also cancel other principals' requests.
+- Every input carries the contract version `schemaVersion: 1` (required; any other value is `INVALID_ARGUMENT`).
 - A request is bound to `expectedHeadSha`; a different current head is `HEAD_CONFLICT`. The same `idempotencyKey` and payload return the same cycle. `dispatch: pending` means "not delivered yet", not "queued".
 - Subscribe to the returned `resourceUri` for progress. `terminal` becomes true only for a result reference, `superseded` or `cancelled` (see `terminalReason`); a process exit or a delivery failure alone never makes it terminal.
 - Failures are returned as the contract error envelope (`code`, `retryable`). Authorization failures are never bypassed automatically, and a pull request outside the installation is reported as `PERMISSION_DENIED`.

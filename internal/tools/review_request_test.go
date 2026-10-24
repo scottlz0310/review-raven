@@ -59,6 +59,13 @@ type requestFixture struct {
 // App mode the identity is proxy-verified; otherwise the gateway auth applies.
 func newRequestFixture(t *testing.T, appMode bool) *requestFixture {
 	t.Helper()
+	return newRequestFixtureWith(t, appMode, nil)
+}
+
+// newRequestFixtureWith is newRequestFixture with a hook to adjust the ledger
+// dependencies (for example deterministic identifiers).
+func newRequestFixtureWith(t *testing.T, appMode bool, adjust func(*reviewrequest.Deps)) *requestFixture {
+	t.Helper()
 	db := openServerTestDB(t)
 	acl, err := reviewrequest.ParseACL(`{
 		"users": {
@@ -71,12 +78,16 @@ func newRequestFixture(t *testing.T, appMode bool) *requestFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := reviewrequest.NewService(context.Background(), db.SQL(), reviewrequest.Deps{
+	deps := reviewrequest.Deps{
 		Authorizer: acl,
 		Heads:      fixedHeads{rrOwner + "/" + rrRepo + "#226": rrHeadA},
 		Producers:  reviewrequest.DenyAllProducers{},
 		Settings:   reviewrequest.DefaultSettings(),
-	})
+	}
+	if adjust != nil {
+		adjust(&deps)
+	}
+	svc, err := reviewrequest.NewService(context.Background(), db.SQL(), deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,9 +180,14 @@ func failed(t *testing.T, result *mcp.CallToolResult, code string) {
 	}
 }
 
+func getArgs(cycleID string) map[string]any {
+	return map[string]any{"schemaVersion": 1, "cycleId": cycleID}
+}
+
 func requestArgs(key, head string) map[string]any {
 	return map[string]any{
-		"owner": rrOwner, "repo": rrRepo, "prNumber": rrPR,
+		"schemaVersion": 1,
+		"owner":         rrOwner, "repo": rrRepo, "prNumber": rrPR,
 		"expectedHeadSha": head, "reason": "opened", "idempotencyKey": key,
 	}
 }
@@ -265,7 +281,7 @@ func TestReviewRequestFlowOverMCP(t *testing.T) {
 
 	var revision float64
 	t.Run("get_review_request returns the snapshot", func(t *testing.T) {
-		snap := ok(t, call(t, alice, "get_review_request", map[string]any{"cycleId": cycleID}), "snapshot")
+		snap := ok(t, call(t, alice, "get_review_request", getArgs(cycleID)), "snapshot")
 		if snap["owner"] != rrOwner || snap["expectedHeadSha"] != rrHeadA || snap["terminal"] != false {
 			t.Fatalf("unexpected snapshot: %+v", snap)
 		}
@@ -294,10 +310,10 @@ func TestReviewRequestFlowOverMCP(t *testing.T) {
 		failed(t, call(t, alice, "request_review", requestArgs("agent-req-0002", rrHeadB)), "HEAD_CONFLICT")
 		failed(t, call(t, alice, "request_review", requestArgs("agent-req-0001", rrHeadB)), "IDEMPOTENCY_CONFLICT")
 		failed(t, call(t, alice, "request_review", requestArgs("agent-req-0003", "abc123")), "INVALID_ARGUMENT")
-		failed(t, call(t, alice, "get_review_request", map[string]any{"cycleId": "cyc_01jbq3x8n5r7t9v2w4y6z8a0c9"}), "REQUEST_NOT_FOUND")
-		failed(t, call(t, alice, "get_review_request", map[string]any{"cycleId": "nope"}), "INVALID_ARGUMENT")
+		failed(t, call(t, alice, "get_review_request", getArgs("cyc_01jbq3x8n5r7t9v2w4y6z8a0c9")), "REQUEST_NOT_FOUND")
+		failed(t, call(t, alice, "get_review_request", getArgs("nope")), "INVALID_ARGUMENT")
 		failed(t, call(t, alice, "request_review", map[string]any{
-			"owner": rrOwner, "repo": rrRepo, "prNumber": 999,
+			"schemaVersion": 1, "owner": rrOwner, "repo": rrRepo, "prNumber": 999,
 			"expectedHeadSha": rrHeadA, "reason": "opened", "idempotencyKey": "agent-req-0004",
 		}), "PERMISSION_DENIED") // 存在しない PR は private PR の存在を明かさない
 	})
@@ -318,7 +334,7 @@ func TestReviewRequestFlowOverMCP(t *testing.T) {
 	t.Run("cancellation is limited to the requester and operators", func(t *testing.T) {
 		args := func(key string) map[string]any {
 			return map[string]any{
-				"cycleId": cycleID, "expectedHeadSha": rrHeadA,
+				"schemaVersion": 1, "cycleId": cycleID, "expectedHeadSha": rrHeadA,
 				"expectedSnapshotRevision": revision, "idempotencyKey": key,
 			}
 		}
@@ -334,7 +350,7 @@ func TestReviewRequestFlowOverMCP(t *testing.T) {
 			t.Fatalf("requester cancel must join the pending cancellation: %+v", own)
 		}
 		failed(t, call(t, alice, "cancel_review_request", map[string]any{
-			"cycleId": cycleID, "expectedHeadSha": rrHeadB, "expectedSnapshotRevision": revision, "idempotencyKey": "alice-cancel-0002",
+			"schemaVersion": 1, "cycleId": cycleID, "expectedHeadSha": rrHeadB, "expectedSnapshotRevision": revision, "idempotencyKey": "alice-cancel-0002",
 		}), "HEAD_CONFLICT")
 	})
 }
@@ -349,9 +365,9 @@ func TestReviewRequestDeniesOthers(t *testing.T) {
 	// ACL にない identity は、proxy 検証済みでも拒否する（cycleId を知っていても許可しない）。
 	mallory := f.connect("mallory")
 	failed(t, call(t, mallory, "request_review", requestArgs("mallory-req-0001", rrHeadA)), "PERMISSION_DENIED")
-	failed(t, call(t, mallory, "get_review_request", map[string]any{"cycleId": cycleID}), "PERMISSION_DENIED")
+	failed(t, call(t, mallory, "get_review_request", getArgs(cycleID)), "PERMISSION_DENIED")
 	failed(t, call(t, mallory, "cancel_review_request", map[string]any{
-		"cycleId": cycleID, "expectedHeadSha": rrHeadA, "expectedSnapshotRevision": 1, "idempotencyKey": "mallory-cancel-1",
+		"schemaVersion": 1, "cycleId": cycleID, "expectedHeadSha": rrHeadA, "expectedSnapshotRevision": 1, "idempotencyKey": "mallory-cancel-1",
 	}), "PERMISSION_DENIED")
 
 	t.Run("resources: denied, unknown and malformed URIs are all not found", func(t *testing.T) {

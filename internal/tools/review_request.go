@@ -35,6 +35,7 @@ func parseRequestURI(uri string) (string, bool) {
 // RequestReviewToolInput is the input of request_review. The caller is the
 // authenticated principal; a self-declared requester is not accepted.
 type RequestReviewToolInput struct {
+	SchemaVersion   int    `json:"schemaVersion"`
 	Owner           string `json:"owner"`
 	Repo            string `json:"repo"`
 	PRNumber        int    `json:"prNumber"`
@@ -45,11 +46,13 @@ type RequestReviewToolInput struct {
 
 // GetReviewRequestToolInput is the input of get_review_request.
 type GetReviewRequestToolInput struct {
-	CycleID string `json:"cycleId"`
+	SchemaVersion int    `json:"schemaVersion"`
+	CycleID       string `json:"cycleId"`
 }
 
 // CancelReviewRequestToolInput is the input of cancel_review_request.
 type CancelReviewRequestToolInput struct {
+	SchemaVersion            int    `json:"schemaVersion"`
 	CycleID                  string `json:"cycleId"`
 	ExpectedHeadSHA          string `json:"expectedHeadSha"`
 	ExpectedSnapshotRevision int    `json:"expectedSnapshotRevision"`
@@ -61,7 +64,7 @@ var requestReviewTool = &mcp.Tool{
 	Description: "PR のレビューを依頼する（初回・再依頼の同一入口）。expectedHeadSha は完全な 40 桁の小文字 16 進数で、現在の PR HEAD と一致しなければ HEAD_CONFLICT。" +
 		"idempotencyKey は主体と PR の範囲で一意で、同じ key・同じ内容の再送は同じ cycle を返す。" +
 		"返す dispatch=pending は未配送を表し、queue 登録済みを意味しない。進捗は resourceUri（review-raven://requests/{cycleId}）を購読して受け取る。" +
-		"呼び出し主体は認証済みの identity から得る（自己申告の requestedBy は受け付けない）。失敗は error envelope（code / retryable）で返す。",
+		"入力には契約の版 schemaVersion: 1 が必須。呼び出し主体は認証済みの identity から得る（自己申告の requestedBy は受け付けない）。失敗は error envelope（code / retryable）で返す。",
 }
 
 var getReviewRequestTool = &mcp.Tool{
@@ -88,6 +91,19 @@ func reviewRequestPrincipal(ctx context.Context, req *mcp.CallToolRequest) (stri
 		return "", &reviewrequest.Error{Code: reviewrequest.CodePermissionDenied, Message: "the caller is not authenticated"}
 	}
 	return login, nil
+}
+
+// checkSchemaVersion enforces the contract version carried by every input
+// (schemaVersion is required by docs/design/contracts). An unsupported version
+// is rejected explicitly instead of being interpreted as version 1.
+func checkSchemaVersion(version int) error {
+	if version != reviewrequest.SchemaVersion {
+		return &reviewrequest.Error{
+			Code:    reviewrequest.CodeInvalidArgument,
+			Message: fmt.Sprintf("schemaVersion must be %d", reviewrequest.SchemaVersion),
+		}
+	}
+	return nil
 }
 
 // contractToolError renders a contract error as an error envelope in the
@@ -137,6 +153,9 @@ func RegisterReviewRequestTools(server *mcp.Server, svc *reviewrequest.Service) 
 		if err != nil {
 			return contractToolError(err)
 		}
+		if err := checkSchemaVersion(in.SchemaVersion); err != nil {
+			return contractToolError(err)
+		}
 		out, err := svc.RequestReview(ctx, principal, reviewrequest.RequestReviewInput{
 			Owner: in.Owner, Repo: in.Repo, PRNumber: in.PRNumber,
 			ExpectedHeadSHA: in.ExpectedHeadSHA, Reason: in.Reason, IdempotencyKey: in.IdempotencyKey,
@@ -152,6 +171,9 @@ func RegisterReviewRequestTools(server *mcp.Server, svc *reviewrequest.Service) 
 		if err != nil {
 			return contractToolError(err)
 		}
+		if err := checkSchemaVersion(in.SchemaVersion); err != nil {
+			return contractToolError(err)
+		}
 		snap, err := svc.Snapshot(ctx, principal, in.CycleID)
 		if err != nil {
 			return contractToolError(err)
@@ -162,6 +184,9 @@ func RegisterReviewRequestTools(server *mcp.Server, svc *reviewrequest.Service) 
 	mcp.AddTool(server, withOutputSchema(cancelReviewRequestTool, outputOrError[reviewrequest.CancelReviewOutput]()), func(ctx context.Context, req *mcp.CallToolRequest, in CancelReviewRequestToolInput) (*mcp.CallToolResult, any, error) {
 		principal, err := reviewRequestPrincipal(ctx, req)
 		if err != nil {
+			return contractToolError(err)
+		}
+		if err := checkSchemaVersion(in.SchemaVersion); err != nil {
 			return contractToolError(err)
 		}
 		out, err := svc.CancelReview(ctx, principal, reviewrequest.CancelReviewInput{
