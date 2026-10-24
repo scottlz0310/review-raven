@@ -945,6 +945,19 @@ func (c *Client) GetCIStatus(ctx context.Context, owner, repo string, prNumber i
 	return CIStatus{OK: len(pending) == 0 && len(failed) == 0, PendingChecks: pending, FailedChecks: failed}, nil
 }
 
+// PullRequestHead returns the current head commit SHA of a pull request.
+func (c *Client) PullRequestHead(ctx context.Context, owner, repo string, prNumber int) (string, error) {
+	pr, _, err := c.gh.PullRequests.Get(ctx, owner, repo, prNumber)
+	if err != nil {
+		return "", fmt.Errorf("failed to get PR: %w", err)
+	}
+	sha := pr.GetHead().GetSHA()
+	if sha == "" {
+		return "", fmt.Errorf("PR #%d head SHA is empty", prNumber)
+	}
+	return sha, nil
+}
+
 // CheckRun is a check run reported for a commit. No pass/fail judgement is applied.
 type CheckRun struct {
 	ID      int64

@@ -91,6 +91,22 @@ IN_PROGRESS_THRESHOLD_SEC=30
 TRUSTED_COMMENT_AUTHORS=your-login,thread-owl,codecov
 ```
 
+### レビュー依頼（opt-in）
+
+`request_review`・`get_review_request`・`cancel_review_request` と `review-raven://requests/{cycleId}` resource は、次の 2 つの設定がそろい、**かつ**専用 GitHub App モードで動いているときだけ公開する。App モードでない、またはアクセスリストがない状態で有効にすると起動を止める。無効のときは既存の公開面を変えない。
+
+```env
+REVIEW_RAVEN_REVIEW_REQUESTS=true
+REVIEW_RAVEN_REQUEST_ACL={"users":{"your-login":["your-org/*"]},"operators":["your-login"]}
+```
+
+- `users` は、login が依頼・読取できる repo（`owner/repo` または `owner/*`）。自分の依頼は取り消せ、`operators` は他の主体の依頼も取り消せる。
+- すべての入力に契約の版 `schemaVersion: 1` が必須（それ以外の値は `INVALID_ARGUMENT`）。
+- 依頼は `expectedHeadSha` に固定する。現在の HEAD と違えば `HEAD_CONFLICT`。同じ `idempotencyKey` と内容は同じ cycle を返す。`dispatch: pending` は「未配送」で、「queue 登録済み」ではない。
+- 進捗は、返された `resourceUri` を購読して受け取る。`terminal` が true になるのは、結果参照あり・`superseded`・`cancelled` のときだけ（`terminalReason` で区別する）。プロセス終了や配送失敗だけでは terminal にならない。
+- 失敗は契約のエラー envelope（`code`・`retryable`）で返す。認可の失敗を自動で迂回せず、installation の対象外の PR は `PERMISSION_DENIED` で返す。
+- 通信の契約は [docs/design/contracts](design/contracts/README.md)。レビュー側への配送と実行観測はこの変更の対象外で、依頼は `dispatch: pending` のままになる。
+
 ### health check
 
 ```bash

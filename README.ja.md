@@ -40,6 +40,9 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 | `diagnose_github_token` | 現在のトークンの login と OAuth スコープ(`X-OAuth-Scopes` レスポンスヘッダー由来)を返す。`PERMISSION_DENIED` の原因切り分け用 |
 | `get_trusted_comment_authors` | PR のコメントの本文を、エージェントの文脈に入れてよい投稿者の許可リスト（サーバーの `TRUSTED_COMMENT_AUTHORS`）を返す。read-only。未設定のときは `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する |
+| `request_review` | _opt-in。専用 App モードのみ。_ 期待する PR の HEAD に固定してレビューを依頼する（初回と再依頼は同じ入口）。主体と PR の範囲で冪等。購読先の `review-raven://requests/{cycleId}` を返す |
+| `get_review_request` | _opt-in。_ レビュー依頼の現在の snapshot（配送・取消・実行観測・結果参照・`terminal`）を返す |
+| `cancel_review_request` | _opt-in。_ 結果なしで失敗した依頼を明示的に取り消し、同じ HEAD を新しい round で依頼し直せるようにする |
 
 `get_review_threads` は任意の `include_bodies` input を受け付けます。後方互換性のため省略時は `true` です。`false` を指定すると、GitHub からレビュースレッド本文を選択しないメタデータのみの射影を返します。レスポンスにはコメント ID、投稿者メタデータ、URL、スレッドの解決状態、ページネーション完了情報が含まれます。
 
@@ -86,6 +89,8 @@ mcp-gateway で、**gateway から到達可能**なこのサーバーの内部�
 | `SQLITE_PATH` | | `/data/review-raven.db` | watch state DB のパス |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
 | `TRUSTED_COMMENT_AUTHORS` | | _(未設定)_ | PR のコメントの本文を、エージェントの文脈に入れてよい GitHub の login（カンマ区切り。`name` でも `name[bot]` でもよい。大文字小文字は区別しない）。`get_trusted_comment_authors` が公開する。不正な要素（ワイルドカードなど）があると、起動を止める。未設定のときは、ツールが `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する（fail-closed） |
+| `REVIEW_RAVEN_REVIEW_REQUESTS` | | `false` | `true` でレビュー依頼の tool と `review-raven://requests/{cycleId}` resource を公開する。専用 GitHub App モード（呼び出し主体を proxy で検証できること）と `REVIEW_RAVEN_REQUEST_ACL` が必須で、満たさなければ起動を止める。無効のときは既存の公開面を変えない |
+| `REVIEW_RAVEN_REQUEST_ACL` | | _(未設定)_ | レビュー依頼の tool のアクセスリスト（JSON）。例: `{"users":{"your-login":["your-org/*"]},"operators":["your-login"]}`。`users` は GitHub の login が依頼・読取でき、自分の依頼を取り消せる repo（`owner/repo` または `owner/*`）、`operators`（`users` の部分集合）は他の主体の依頼も取り消せる。cycleId を知っていることや App の広い installation 権限だけでは許可しない。不正または空の設定は起動を止める |
 
 **非対応**（旧 `copilot-review-mcp` 系統で削除済み）: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
 

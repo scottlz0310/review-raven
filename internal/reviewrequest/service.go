@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,61 @@ type Deps struct {
 type Service struct {
 	db *sql.DB
 	d  Deps
+
+	notifyMu sync.RWMutex
+	notify   func(cycleID string)
+}
+
+// SetNotifier registers the callback invoked after a transaction commits, once
+// per cycle whose stored state changed (the snapshot revision increased). It is
+// how resource subscribers learn about updates. The callback runs on the
+// caller's goroutine and must not block for long.
+func (s *Service) SetNotifier(fn func(cycleID string)) {
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	s.notify = fn
+}
+
+func (s *Service) notifyChanged(ids []string) {
+	s.notifyMu.RLock()
+	fn := s.notify
+	s.notifyMu.RUnlock()
+	if fn == nil {
+		return
+	}
+	for _, id := range ids {
+		fn(id)
+	}
+}
+
+// changeLog collects, per open transaction, the cycles written by it.
+var changeLog sync.Map // *sql.Tx -> *changeList
+
+type changeList struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (l *changeList) add(id string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, existing := range l.ids {
+		if existing == id {
+			return
+		}
+	}
+	l.ids = append(l.ids, id)
+}
+
+// recordChange notes that the cycle id was inserted or updated inside q.
+func recordChange(q queryer, id string) {
+	tx, ok := q.(*sql.Tx)
+	if !ok {
+		return
+	}
+	if v, ok := changeLog.Load(tx); ok {
+		v.(*changeList).add(id)
+	}
 }
 
 // NewService applies the ledger schema and returns a Service.
@@ -72,6 +128,10 @@ func (s *Service) inTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
+	changes := &changeList{}
+	changeLog.Store(tx, changes)
+	defer changeLog.Delete(tx)
+
 	if err := fn(tx); err != nil {
 		_ = tx.Rollback()
 		return err
@@ -79,6 +139,8 @@ func (s *Service) inTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+	// 通知は commit の後に行う。rollback した変更を購読者へ見せない。
+	s.notifyChanged(changes.ids)
 	return nil
 }
 
@@ -175,6 +237,10 @@ func (s *Service) createOrMerge(ctx context.Context, p createParams) (*createRes
 	}
 
 	head, err := s.d.Heads.CurrentHead(ctx, p.owner, p.repo, p.pr)
+	if errors.Is(err, ErrPullRequestNotAccessible) {
+		// 存在しない PR と installation 対象外の PR を区別しない（private PR の存在を明かさない）。
+		return nil, newError(CodePermissionDenied, "the pull request is not accessible")
+	}
 	if err != nil {
 		return nil, newError(CodeUnavailable, "could not read the current PR head: %v", err)
 	}

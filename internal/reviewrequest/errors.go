@@ -48,6 +48,38 @@ func newError(code, format string, args ...any) *Error {
 	return &Error{Code: code, Message: fmt.Sprintf(format, args...), Retryable: retryable[code]}
 }
 
+// ErrPullRequestNotAccessible is returned by a HeadResolver when the pull
+// request does not exist or is outside what the App installation can see. It is
+// reported as PERMISSION_DENIED so that the existence of a private pull request
+// is not revealed.
+var ErrPullRequestNotAccessible = errors.New("pull request is not accessible")
+
+// ErrorEnvelope is the wire shape of every contract error
+// (docs/design/contracts/schemas/error.schema.json).
+type ErrorEnvelope struct {
+	SchemaVersion int         `json:"schemaVersion"`
+	Error         ErrorDetail `json:"error"`
+}
+
+// ErrorDetail is the error object of an ErrorEnvelope.
+type ErrorDetail struct {
+	Code      string         `json:"code"`
+	Message   string         `json:"message"`
+	Retryable bool           `json:"retryable"`
+	Details   map[string]any `json:"details,omitempty"`
+}
+
+// Envelope returns the wire form of the error.
+func (e *Error) Envelope() ErrorEnvelope {
+	return ErrorEnvelope{
+		SchemaVersion: SchemaVersion,
+		Error:         ErrorDetail{Code: e.Code, Message: e.Message, Retryable: e.Retryable, Details: e.Details},
+	}
+}
+
+// AsError returns err as a contract *Error when it is one.
+func AsError(err error) (*Error, bool) { return errors.AsType[*Error](err) }
+
 // deliveryError maps a purged request to DELIVERY_EXPIRED for the internal
 // (service-to-service) surfaces: a late redelivery for a removed request is a
 // terminal condition for the sender, unlike a public read of an expired URI.
