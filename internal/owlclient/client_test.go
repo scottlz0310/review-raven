@@ -132,27 +132,34 @@ func wantContractError(t *testing.T, err error, code string, retryable bool) {
 
 func TestValidateEndpoint(t *testing.T) {
 	cases := []struct {
-		name string
-		raw  string
-		ok   bool
+		name  string
+		raw   string
+		plain bool
+		ok    bool
 	}{
-		{"https", "https://gateway.example/mcp/thread-owl-internal", true},
-		{"loopback http", "http://127.0.0.1:8084/mcp", true},
-		{"localhost http", "http://localhost:8084/mcp", true},
-		{"ipv6 loopback http", "http://[::1]:8084/mcp", true},
-		{"plain http to another host", "http://gateway.example/mcp", false},
-		{"unsupported scheme", "ftp://gateway.example/mcp", false},
-		{"embedded credentials", "https://user:pass@gateway.example/mcp", false},
-		{"query string", "https://gateway.example/mcp?token=x", false},
-		{"fragment", "https://gateway.example/mcp#x", false},
-		{"no host", "https:///mcp", false},
-		{"empty", "", false},
-		{"not a url", "::::", false},
+		{"https", "https://gateway.example/mcp/thread-owl-internal", false, true},
+		{"loopback http", "http://127.0.0.1:8084/mcp", false, true},
+		{"localhost http", "http://localhost:8084/mcp", false, true},
+		{"ipv6 loopback http", "http://[::1]:8084/mcp", false, true},
+		{"plain http to another host", "http://gateway.example/mcp", false, false},
+		{"plain http to a service name", "http://mcp-gateway:8080/mcp/thread-owl-internal", false, false},
+		{"plain http to a service name, opted in", "http://mcp-gateway:8080/mcp/thread-owl-internal", true, true},
+		{"unsupported scheme", "ftp://gateway.example/mcp", false, false},
+		{"unsupported scheme, opted in", "ftp://mcp-gateway/mcp", true, false},
+		{"embedded credentials", "https://user:pass@gateway.example/mcp", false, false},
+		{"embedded credentials, opted in", "http://user:pass@mcp-gateway:8080/mcp", true, false},
+		{"query string", "https://gateway.example/mcp?token=x", false, false},
+		{"query string, opted in", "http://mcp-gateway:8080/mcp?token=x", true, false},
+		{"fragment", "https://gateway.example/mcp#x", false, false},
+		{"no host", "https:///mcp", false, false},
+		{"empty", "", false, false},
+		{"empty, opted in", "", true, false},
+		{"not a url", "::::", false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := ValidateEndpoint(tc.raw); (err == nil) != tc.ok {
-				t.Fatalf("ValidateEndpoint(%q) error = %v, want ok=%v", tc.raw, err, tc.ok)
+			if _, err := ValidateEndpoint(tc.raw, tc.plain); (err == nil) != tc.ok {
+				t.Fatalf("ValidateEndpoint(%q, plain=%v) error = %v, want ok=%v", tc.raw, tc.plain, err, tc.ok)
 			}
 		})
 	}

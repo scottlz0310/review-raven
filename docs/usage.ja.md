@@ -132,7 +132,7 @@ REVIEW_RAVEN_OWL_INTERNAL_TOKEN=<review-raven 用に発行したサービス資�
 # REVIEW_RAVEN_DELIVERY_INTERVAL_SEC=5
 ```
 
-- URL と資格情報は同時に指定し、レビュー依頼の台帳が前提。URL は https（http は loopback ホストのみ）で、それ以外は起動を止める。
+- URL と資格情報は同時に指定し、レビュー依頼の台帳が前提。URL は https（http は loopback ホストのみ）で、それ以外は起動を止める。コンテナの private network では gateway をサービス名の http で引くため、`REVIEW_RAVEN_OWL_INTERNAL_ALLOW_PLAIN_HTTP=true` で明示的に許可する（資格情報はそのネットワーク上を平文で流れる。URL の資格情報・query・fragment は引き続き拒否する）。
 - 配送は少なくとも1回で、指数・ジッタつきのバックオフで試行上限（既定 8 回）まで再送する。上限に達すると `dispatch: failed`（`UNAVAILABLE`）。資格情報の拒否（HTTP 401/403）や不正なリクエストは最終として原因（`PERMISSION_DENIED` / `INVALID_ARGUMENT`）を公開し、再送も別経路への切替えもしない。thread-owl が答えたエラーは契約の code を保つ。
 - 取消は、thread-owl の ACK でだけ確定する。`CANCEL_RESULT_POSTED` は撤回、`CANCEL_UNCONFIRMED` と、`githubWriteReconciled` が true でない ACK は、同じ取消 ID で再送する。リダイレクトは追わない。`cancel_review_request` の同じ `idempotencyKey` の再送は、配送が終わった取消を再開し、再送の系列が生きている間は何も変えない。
 - 資格情報の発行・rotation・失効は配備側（Mcp-Docker）の責務で、このサーバーは行わない。資格情報は Bearer としてだけ送り、ログやエラーメッセージには出さない。
