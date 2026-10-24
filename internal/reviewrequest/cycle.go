@@ -140,6 +140,7 @@ func insertCycle(ctx context.Context, q queryer, c *cycle) error {
 	if err != nil {
 		return fmt.Errorf("insert review request: %w", err)
 	}
+	recordChange(q, c.ID)
 	return nil
 }
 
@@ -161,6 +162,7 @@ func updateCycle(ctx context.Context, q queryer, c *cycle) error {
 		`UPDATE review_requests SET `+strings.Join(sets, ", ")+` WHERE cycle_id = ?`, args...); err != nil {
 		return fmt.Errorf("update review request: %w", err)
 	}
+	recordChange(q, c.ID)
 	return nil
 }
 

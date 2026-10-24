@@ -91,6 +91,21 @@ IN_PROGRESS_THRESHOLD_SEC=30
 TRUSTED_COMMENT_AUTHORS=your-login,thread-owl,codecov
 ```
 
+### Review requests (opt-in)
+
+`request_review`, `get_review_request`, `cancel_review_request` and the `review-raven://requests/{cycleId}` resource are published only when both settings below are present **and** the server runs in the dedicated GitHub App mode. Enabling them without the App mode or without an access list stops startup; the existing tool surface does not change otherwise.
+
+```env
+REVIEW_RAVEN_REVIEW_REQUESTS=true
+REVIEW_RAVEN_REQUEST_ACL={"users":{"your-login":["your-org/*"]},"operators":["your-login"]}
+```
+
+- `users` lists the repositories (`owner/repo`, or `owner/*`) a login may request and read. A principal may cancel its own requests; `operators` may also cancel other principals' requests.
+- A request is bound to `expectedHeadSha`; a different current head is `HEAD_CONFLICT`. The same `idempotencyKey` and payload return the same cycle. `dispatch: pending` means "not delivered yet", not "queued".
+- Subscribe to the returned `resourceUri` for progress. `terminal` becomes true only for a result reference, `superseded` or `cancelled` (see `terminalReason`); a process exit or a delivery failure alone never makes it terminal.
+- Failures are returned as the contract error envelope (`code`, `retryable`). Authorization failures are never bypassed automatically, and a pull request outside the installation is reported as `PERMISSION_DENIED`.
+- The wire contract is in [docs/design/contracts](design/contracts/README.md). Delivery to the reviewer side and execution observations are not part of this change yet: a request stays `dispatch: pending`.
+
 ### Check health
 
 ```bash

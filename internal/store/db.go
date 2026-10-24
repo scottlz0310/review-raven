@@ -169,6 +169,12 @@ func Open(path string) (*DB, error) {
 // Close releases the database connection.
 func (d *DB) Close() error { return d.db.Close() }
 
+// SQL returns the underlying connection pool so that other packages (the
+// review-request ledger) can share the same SQLite database. The pool is
+// limited to one connection; callers must not hold a transaction across calls
+// into this package.
+func (d *DB) SQL() *sql.DB { return d.db }
+
 // TriggerEntry is a row from trigger_log.
 type TriggerEntry struct {
 	ID           int64

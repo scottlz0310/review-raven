@@ -17,6 +17,7 @@ import (
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
 	"github.com/scottlz0310/review-raven/internal/githubapp"
 	"github.com/scottlz0310/review-raven/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/reviewrequest"
 	"github.com/scottlz0310/review-raven/internal/store"
 	"github.com/scottlz0310/review-raven/internal/tools"
 	"github.com/scottlz0310/review-raven/internal/trustedauthors"
@@ -84,6 +85,23 @@ func main() {
 		builderOpts.InstallationTokens = source
 		slog.Info("専用Appのinstallationを確認しました", "app_id", cfg.githubApp.AppID,
 			"installation_id", cfg.githubApp.InstallationID, "owner", cfg.githubApp.Owner)
+
+		if cfg.reviewRequestACL != nil {
+			// 依頼の台帳は専用Appモードだけで、保護設定の ACL を認可に使う。内部面（owl / Squirrel）の
+			// producer は別の段階で有効にするため、ここでは誰も観測を送れない。
+			ledger, err := reviewrequest.NewService(context.Background(), db.SQL(), reviewrequest.Deps{
+				Authorizer: cfg.reviewRequestACL,
+				Heads:      tools.NewInstallationHeadResolver(threshold, source),
+				Producers:  reviewrequest.DenyAllProducers{},
+				Settings:   reviewrequest.DefaultSettings(),
+			})
+			if err != nil {
+				slog.Error("レビュー依頼の台帳を初期化できません", "err", err)
+				os.Exit(1)
+			}
+			builderOpts.ReviewRequests = ledger
+			slog.Info("レビュー依頼の公開面を有効にしました", "acl_users", len(cfg.reviewRequestACL.Users()))
+		}
 	}
 	if len(cfg.trustedCommentAuthors) == 0 {
 		slog.Warn("TRUSTED_COMMENT_AUTHORS is not set: get_trusted_comment_authors returns an error, so no comment author is trusted. Set TRUSTED_COMMENT_AUTHORS to the GitHub logins whose comments may be read (comma-separated).")
@@ -131,6 +149,8 @@ type config struct {
 	gatewayInternalURL     string
 	gatewayInternalSecret  string
 	trustedCommentAuthors  []string
+	// reviewRequestACL is non-nil only when the review-request tools are enabled.
+	reviewRequestACL *reviewrequest.ACL
 }
 
 func loadConfig() config {
@@ -167,6 +187,11 @@ func loadConfig() config {
 		fmt.Fprintf(os.Stderr, "review-raven: invalid TRUSTED_COMMENT_AUTHORS: %v\n", err)
 		os.Exit(1)
 	}
+	reviewACL, err := loadReviewRequestConfig(os.Getenv("REVIEW_RAVEN_REVIEW_REQUESTS"), os.Getenv("REVIEW_RAVEN_REQUEST_ACL"), appConfig != nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "review-raven: invalid review request configuration: %v\n", err)
+		os.Exit(1)
+	}
 	return config{
 		authMode:               mode,
 		githubApp:              appConfig,
@@ -178,7 +203,32 @@ func loadConfig() config {
 		gatewayInternalURL:     gatewayURL,
 		gatewayInternalSecret:  gatewaySecret,
 		trustedCommentAuthors:  trusted,
+		reviewRequestACL:       reviewACL,
 	}
+}
+
+// loadReviewRequestConfig reads the opt-in switch and the access list of the
+// review-request tools. It returns a nil ACL when the feature is off.
+//
+// The feature needs the dedicated GitHub App mode (the caller identity must be
+// proxy-verified) and a non-empty ACL: enabling it without either is a startup
+// error, never a silent fallback to "allow everyone" or to an unverified identity.
+func loadReviewRequestConfig(enabled, aclJSON string, appMode bool) (*reviewrequest.ACL, error) {
+	switch strings.ToLower(strings.TrimSpace(enabled)) {
+	case "", "false", "0", "off":
+		return nil, nil
+	case "true", "1", "on":
+	default:
+		return nil, fmt.Errorf("REVIEW_RAVEN_REVIEW_REQUESTS must be true or false, got %q", enabled)
+	}
+	if !appMode {
+		return nil, errors.New("REVIEW_RAVEN_REVIEW_REQUESTS=true requires the dedicated GitHub App mode")
+	}
+	acl, err := reviewrequest.ParseACL(aclJSON)
+	if err != nil {
+		return nil, fmt.Errorf("REVIEW_RAVEN_REQUEST_ACL: %w", err)
+	}
+	return acl, nil
 }
 
 // buildGatewayClientFactory returns a watch ClientFactory that resolves the
