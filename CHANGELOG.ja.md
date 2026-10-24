@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 追加
+
+- レビュー依頼サイクルの契約v1を`docs/design/contracts/`に追加した（#144、R1/O1/I1共通）。公開MCP 3面・snapshot・内部5面・エラーenvelope・設定のJSON Schema、`valid` / `invalid`のgolden fixture（invalidは「valid な base + 1点のパッチ」）、全エラーcodeを網羅する複数呼び出しの共通シナリオで構成し、`internal/contracts`のテストで整合を保つ。snapshotには、完了と区別するため`terminalReason` / `supersededBy`を追加した。本番の挙動は変わらず、新APIは未実装。テストのため`google/jsonschema-go`（既存の間接依存、同一版）を直接依存にした。
+
 ### 変更
 
 - 結果なしで失敗したcycleの復旧を、認可された明示取消・無効化ACK後の同HEAD新cycle/round受付として定義。取消競合・旧候補の遅着・配送失敗のR1/O1受け入れ条件を追加した（#144、PR #146）。

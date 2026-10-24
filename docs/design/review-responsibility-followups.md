@@ -1,7 +1,7 @@
 # #144 後続実装Issue案
 
-状態: 未起票。承認された本作業の範囲は設計PRとIssue案まで。以下はIssue本文に転記できる単位であり、作成済みとは扱わない。
-契約の根拠は[責務設計](review-responsibility-boundaries.md)。実装開始前に本設計のレビュー結果を反映する。
+状態: 2026-10-24にZ1を除き起票済み。R1=[review-raven#147](https://github.com/scottlz0310/review-raven/issues/147)、O1=[thread-owl#279](https://github.com/scottlz0310/thread-owl/issues/279)、R2=[mcp-resource-subscriber#225](https://github.com/scottlz0310/mcp-resource-subscriber/issues/225)（実装・マージ済み）、I1=[Mcp-Docker#392](https://github.com/scottlz0310/Mcp-Docker/issues/392)、I2=[Mcp-Docker#393](https://github.com/scottlz0310/Mcp-Docker/issues/393)、B1=[review-raven#148](https://github.com/scottlz0310/review-raven/issues/148)・[thread-owl#280](https://github.com/scottlz0310/thread-owl/issues/280)、S1=[squirrel-notifier#497](https://github.com/scottlz0310/squirrel-notifier/issues/497)。Z1はI2完了後に起票する。
+R1/O1/I1が共有する入出力・不変条件・エラーcode・設定既定は[契約v1](contracts/README.md)で確定した。実装はこの契約とシナリオを満たす。契約の根拠は[責務設計](review-responsibility-boundaries.md)。
 
 ## R1 — review-raven: 依頼台帳・公開受付・進捗Resource
 

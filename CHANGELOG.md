@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the review-request cycle contract v1 under `docs/design/contracts/` (#144, R1/O1/I1): JSON Schemas for the three public MCP surfaces, the snapshot, the five internal surfaces, the error envelope and the settings; golden `valid` / `invalid` fixtures (each invalid fixture is a valid base plus a one-point patch); and shared multi-call scenarios that cover every error code. `internal/contracts` tests keep them consistent. The contract adds `terminalReason` / `supersededBy` to the snapshot so consumers can tell superseded and cancelled cycles from a completed one. No production behavior changes; the new APIs are still unimplemented. `google/jsonschema-go` (already a transitive dependency, same version) is now a direct dependency for the tests.
+
 ### Changed
 
 - Clarified recovery for review cycles that fail without a result: an authorized cancellation must be acknowledged before a new cycle and round can be requested for the same HEAD. Added R1/O1 acceptance criteria for cancellation races, delayed candidates, and delivery failures (#144, PR #146).

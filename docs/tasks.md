@@ -6,7 +6,9 @@
 - [x] architectureを現行方針へ更新し、repo別の後続実装Issue案を整理する。
 - [x] 英語版architectureを独立した英語の説明として維持し、日本語版との内容・相互リンクと今回の英語CHANGELOG記載を揃える。
 - [x] PR #146のquestion: 結果なし失敗cycleの明示取消・無効化確認・同HEAD新round受付と、R1/O1の受け入れテストを定義する。
-- [ ] 設計レビュー後に後続Issueを実起票し、squirrel-notifier#497へ依存契約を反映する（本作業は案まで）。
+- [x] 設計レビュー後に後続Issueを実起票し、squirrel-notifier#497へ依存契約を反映する（2026-10-24、Z1を除く7件を起票し#497へ設計コメントを追記）。
+- [x] R1/O1/I1共通の契約v1（JSON Schema・golden fixture・共通シナリオ・整合テスト）を[docs/design/contracts](design/contracts/README.md)に確定する。
+- [ ] R1（[#147](https://github.com/scottlz0310/review-raven/issues/147)）を契約v1に沿って実装し、O1（thread-owl#279）とシナリオで相互接続テストを行う。
 - [ ] 新API・永続化・publisher・CLI逐次出力・skill切替を後続Issueで実装・配布・実機検証する。
 
 設計: [責務境界](design/review-responsibility-boundaries.md)、[後続Issue案](design/review-responsibility-followups.md)。#144全体の完了と製品移行完了を混同しない。
