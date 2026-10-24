@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadReviewRequestConfig(t *testing.T) {
 	const acl = `{"users":{"alice":["scottlz0310/*"]},"operators":["alice"]}`
@@ -81,6 +84,55 @@ func TestLoadInternalSurfaceConfig(t *testing.T) {
 			}
 			if !tc.wantACL && gotSecret != "" {
 				t.Fatalf("a disabled or failed surface must not return a secret, got %q", gotSecret)
+			}
+		})
+	}
+}
+
+func TestLoadDeliveryConfig(t *testing.T) {
+	const (
+		url   = "https://gateway.example/mcp/thread-owl-internal"
+		token = "service-credential-0123456789abcdef"
+	)
+
+	cases := []struct {
+		name         string
+		url          string
+		token        string
+		interval     string
+		ledger       bool
+		wantConfig   bool
+		wantInterval time.Duration
+		wantErr      bool
+	}{
+		{"off by default", "", "", "", false, false, 0, false},
+		{"on with the default interval", url, token, "", true, true, 5 * time.Second, false},
+		{"on with an interval", url, token, "30", true, true, 30 * time.Second, false},
+		{"loopback http is allowed", "http://127.0.0.1:8084/mcp", token, "", true, true, 5 * time.Second, false},
+		{"values are trimmed", "  " + url + "  ", "  " + token + "  ", " 10 ", true, true, 10 * time.Second, false},
+		{"url without a credential", url, "", "", true, false, 0, true},
+		{"credential without a url", "", token, "", true, false, 0, true},
+		{"without the review-request ledger", url, token, "", false, false, 0, true},
+		{"plain http to another host", "http://gateway.example/mcp", token, "", true, false, 0, true},
+		{"credentials embedded in the url", "https://user:pass@gateway.example/mcp", token, "", true, false, 0, true},
+		{"interval not a number", url, token, "fast", true, false, 0, true},
+		{"interval zero", url, token, "0", true, false, 0, true},
+		{"interval too long", url, token, "3601", true, false, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, interval, err := loadDeliveryConfig(tc.url, tc.token, tc.interval, tc.ledger)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("loadDeliveryConfig() error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if (cfg != nil) != tc.wantConfig {
+				t.Fatalf("loadDeliveryConfig() config = %v, want non-nil=%v", cfg, tc.wantConfig)
+			}
+			if interval != tc.wantInterval {
+				t.Fatalf("interval = %v, want %v", interval, tc.wantInterval)
+			}
+			if cfg != nil && cfg.Token != token {
+				t.Fatalf("the credential must be trimmed, got %q", cfg.Token)
 			}
 		})
 	}

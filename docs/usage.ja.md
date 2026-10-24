@@ -122,6 +122,21 @@ REVIEW_RAVEN_SERVICE_ACL={"services":{"svc-owl":{"actions":["ingest","publish_re
 - `publish_review_result` は、レビュー側の GitHub 投稿への参照だけを保存する。superseded な cycle への結果は旧 cycle に保存し、取消済み cycle への結果は `CANDIDATE_CANCELLED`、保持期限後に削除された依頼への遅延配送は `DELIVERY_EXPIRED`。
 - 観測は、依頼を配送した candidate に対するものだけを受理し、`producerEpoch` と `sequence` で順序を検証する。raven から thread-owl への候補の配送（outbox worker）は別の変更で、それまでは依頼は `dispatch: pending` のままになり、観測は `PRODUCER_NOT_ASSIGNED` で拒否される。
 
+### thread-owl への配送（opt-in）
+
+キューに載った候補と取消は、このプロセス内の worker が、thread-owl 自身の内部 MCP 面（`accept_review_candidate`・`cancel_review_candidate`）へ送る。
+
+```env
+REVIEW_RAVEN_OWL_INTERNAL_URL=https://gateway.example/mcp/thread-owl-internal
+REVIEW_RAVEN_OWL_INTERNAL_TOKEN=<review-raven 用に発行したサービス資格情報>
+# REVIEW_RAVEN_DELIVERY_INTERVAL_SEC=5
+```
+
+- URL と資格情報は同時に指定し、レビュー依頼の台帳が前提。URL は https（http は loopback ホストのみ）で、それ以外は起動を止める。
+- 配送は少なくとも1回で、指数・ジッタつきのバックオフで試行上限（既定 8 回）まで再送する。上限に達すると `dispatch: failed`（`UNAVAILABLE`）。資格情報の拒否（HTTP 401/403）や不正なリクエストは最終として原因（`PERMISSION_DENIED` / `INVALID_ARGUMENT`）を公開し、再送も別経路への切替えもしない。thread-owl が答えたエラーは契約の code を保つ。
+- 取消は、thread-owl の ACK でだけ確定する。`CANCEL_RESULT_POSTED` は撤回、`CANCEL_UNCONFIRMED` は同じ取消 ID で再送する。`cancel_review_request` の同じ `idempotencyKey` の再送は、配送が終わった取消を再開し、再送の系列が生きている間は何も変えない。
+- 資格情報の発行・rotation・失効は配備側（Mcp-Docker）の責務で、このサーバーは行わない。資格情報は Bearer としてだけ送り、ログやエラーメッセージには出さない。
+
 ### health check
 
 ```bash

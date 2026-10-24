@@ -17,6 +17,7 @@ import (
 	ghclient "github.com/scottlz0310/review-raven/internal/github"
 	"github.com/scottlz0310/review-raven/internal/githubapp"
 	"github.com/scottlz0310/review-raven/internal/middleware"
+	"github.com/scottlz0310/review-raven/internal/owlclient"
 	"github.com/scottlz0310/review-raven/internal/reviewrequest"
 	"github.com/scottlz0310/review-raven/internal/store"
 	"github.com/scottlz0310/review-raven/internal/tools"
@@ -70,6 +71,7 @@ func main() {
 	threshold := time.Duration(cfg.inProgressThresholdSec) * time.Second
 	builderOpts := tools.BuilderOptions{TrustedCommentAuthors: cfg.trustedCommentAuthors}
 	var ledger *reviewrequest.Service
+	stopDelivery := context.CancelFunc(func() {})
 	if cfg.githubApp != nil {
 		source, err := githubapp.NewTokenSource(cfg.githubApp.Config)
 		if err != nil {
@@ -140,6 +142,24 @@ func main() {
 		slog.Info("レビュー依頼の内部面を有効にしました", "services", cfg.serviceACL.Services())
 	}
 
+	// outbox の配送 worker。レビュー側（thread-owl）の内部面が設定されたときだけ動かす。
+	if cfg.owlDelivery != nil {
+		owl, err := owlclient.New(*cfg.owlDelivery)
+		if err != nil {
+			slog.Error("thread-owl 向けの配送クライアントを作成できません", "err", err)
+			os.Exit(1)
+		}
+		var deliveryCtx context.Context
+		deliveryCtx, stopDelivery = context.WithCancel(context.Background())
+		defer stopDelivery()
+		go func() {
+			if err := ledger.RunDelivery(deliveryCtx, owl, cfg.deliveryInterval); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("配送 worker が停止しました", "err", err)
+			}
+		}()
+		slog.Info("レビュー側への配送 worker を開始しました", "endpoint", cfg.owlDelivery.Endpoint, "interval", cfg.deliveryInterval.String())
+	}
+
 	addr := net.JoinHostPort(cfg.bindAddr, cfg.port)
 	slog.Info("review-raven starting", "addr", addr)
 	// WriteTimeout remains unlimited because legacy wait_for_copilot_review still exists
@@ -153,6 +173,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 	server.RegisterOnShutdown(mcpHandler.Close)
+	server.RegisterOnShutdown(stopDelivery)
 	if internalHandler != nil {
 		server.RegisterOnShutdown(internalHandler.Close)
 	}
@@ -180,6 +201,9 @@ type config struct {
 	// (service-to-service) surface is enabled.
 	serviceACL          *reviewrequest.ServiceACL
 	internalProxySecret string
+	// owlDelivery is non-nil only when delivery to thread-owl is enabled.
+	owlDelivery      *owlclient.Config
+	deliveryInterval time.Duration
 }
 
 func loadConfig() config {
@@ -232,6 +256,13 @@ func loadConfig() config {
 		fmt.Fprintf(os.Stderr, "review-raven: invalid internal surface configuration: %v\n", err)
 		os.Exit(1)
 	}
+	owlDelivery, deliveryInterval, err := loadDeliveryConfig(
+		os.Getenv("REVIEW_RAVEN_OWL_INTERNAL_URL"), os.Getenv("REVIEW_RAVEN_OWL_INTERNAL_TOKEN"),
+		os.Getenv("REVIEW_RAVEN_DELIVERY_INTERVAL_SEC"), reviewACL != nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "review-raven: invalid delivery configuration: %v\n", err)
+		os.Exit(1)
+	}
 	return config{
 		authMode:               mode,
 		githubApp:              appConfig,
@@ -246,7 +277,45 @@ func loadConfig() config {
 		reviewRequestACL:       reviewACL,
 		serviceACL:             serviceACL,
 		internalProxySecret:    internalSecret,
+		owlDelivery:            owlDelivery,
+		deliveryInterval:       deliveryInterval,
 	}
+}
+
+// defaultDeliveryInterval is how often the delivery worker looks for due messages.
+const defaultDeliveryInterval = 5 * time.Second
+
+// loadDeliveryConfig reads the endpoint and credential of thread-owl's internal
+// surface and the polling interval of the delivery worker. It returns a nil
+// config when delivery is off (neither value is set).
+//
+// The URL and the credential are set together or not at all, delivery needs the
+// review-request ledger, and the endpoint must be https (or loopback http):
+// a half-configured or clear-text delivery is a startup error, never a fallback.
+func loadDeliveryConfig(rawURL, token, rawInterval string, ledgerEnabled bool) (*owlclient.Config, time.Duration, error) {
+	rawURL, token = strings.TrimSpace(rawURL), strings.TrimSpace(token)
+	if rawURL == "" && token == "" {
+		return nil, 0, nil
+	}
+	if (rawURL == "") != (token == "") {
+		return nil, 0, errors.New("set both REVIEW_RAVEN_OWL_INTERNAL_URL and REVIEW_RAVEN_OWL_INTERNAL_TOKEN, or neither")
+	}
+	if !ledgerEnabled {
+		return nil, 0, errors.New("delivery to thread-owl requires REVIEW_RAVEN_REVIEW_REQUESTS=true")
+	}
+	endpoint, err := owlclient.ValidateEndpoint(rawURL)
+	if err != nil {
+		return nil, 0, fmt.Errorf("REVIEW_RAVEN_OWL_INTERNAL_URL: %w", err)
+	}
+	interval := defaultDeliveryInterval
+	if raw := strings.TrimSpace(rawInterval); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil || seconds < 1 || seconds > 3600 {
+			return nil, 0, fmt.Errorf("REVIEW_RAVEN_DELIVERY_INTERVAL_SEC must be an integer within 1..3600, got %q", raw)
+		}
+		interval = time.Duration(seconds) * time.Second
+	}
+	return &owlclient.Config{Endpoint: endpoint, Token: token}, interval, nil
 }
 
 // loadInternalSurfaceConfig reads the opt-in switch, the service ACL and the
