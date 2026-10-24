@@ -115,6 +115,14 @@ review-raven（依頼窓口）と thread-owl（レビュー側）が**同じ契�
 
 Go テストが検証するのは**形**（各 `input` / `output` が schema に適合する、`snapshot` のパスが実在する、全エラー code がいずれかのシナリオで使われる）であり、実装の挙動ではない。R1 / O1 は同じシナリオを自分の実装に対して実行する相互接続テストを実装する。
 
+## 実装状況
+
+| 範囲 | 状況 |
+|---|---|
+| 台帳コア（状態遷移・冪等性・snapshot 射影・outbox への登録） | `internal/reviewrequest` に実装済み（R1 段階 1）。出力はすべて本契約の schema で検証する |
+| 公開 MCP・Resource・repo ACL | 未実装（R1 段階 2） |
+| outbox の配送・内部面・thread-owl との相互接続 | 未実装（R1 段階 3、O1） |
+
 ## 契約を変えるとき
 
 1. `schemas/` を変更し、対応する `valid` / `invalid` fixture とシナリオを同じ変更で更新する（`go test ./internal/contracts/` が整合を検証する）。

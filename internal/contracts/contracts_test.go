@@ -1,8 +1,9 @@
 // Package contracts validates the review-request contract documents under
 // docs/design/contracts (JSON Schemas, golden fixtures and shared scenarios).
 //
-// There is no production code here: the schemas are a design artifact that the
-// R1 (review-raven) and O1 (thread-owl) implementations must both satisfy.
+// The schemas are a design artifact that the R1 (review-raven) and O1
+// (thread-owl) implementations must both satisfy. The only non-test code is the
+// Validate helper used by those implementations' tests.
 package contracts
 
 import (

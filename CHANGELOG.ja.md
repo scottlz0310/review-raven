@@ -11,6 +11,7 @@
 
 ### 追加
 
+- レビュー依頼の台帳コア（`internal/reviewrequest`、#144 R1、#147 の3段階中の段階1）を追加した。SQLiteの`review_requests` / `request_keys` / `source_bindings` / `request_outbox` / `expired_cycles`と、依頼（主体×PRの冪等性、同一PR/HEAD/reasonの未完了依頼への結合、新HEADによるsuperseded）、明示取消（要求・無効化ACK・結果先着時の撤回・同じkeyによる配送再開）、結果参照（superseded cycleへの遅着結果は旧cycleに保存）、実行観測（epoch・sequenceの順序、重複、producer割当）、snapshot射影の状態遷移を実装する。出力する全JSONを契約のJSON Schemaでテスト検証する。状態変更とoutbox登録は同一transaction。MCPへの公開は未実装で、旧`trigger_log` / `review_watch`は変更しない。公開tool・Resource・thread-owlへの配送は別の変更で行う。
 - レビュー依頼サイクルの契約v1を`docs/design/contracts/`に追加した（#144、R1/O1/I1共通）。公開MCP 3面・snapshot・内部5面・エラーenvelope・設定のJSON Schema、`valid` / `invalid`のgolden fixture（invalidは「valid な base + 1点のパッチ」）、全エラーcodeを網羅する複数呼び出しの共通シナリオで構成し、`internal/contracts`のテストで整合を保つ。snapshotには、完了と区別するため`terminalReason` / `supersededBy`を追加した。本番の挙動は変わらず、新APIは未実装。テストのため`google/jsonschema-go`（既存の間接依存、同一版）を直接依存にした。
 
 ### 変更
