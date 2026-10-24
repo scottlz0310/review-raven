@@ -3,8 +3,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,17 +16,31 @@ import (
 
 const contractFixtureDir = "../../docs/design/contracts/fixtures"
 
-// contractIDs yields the identifiers used by the contract fixtures, so that
-// fixture inputs that name a cycle or a cancellation refer to what the ledger
-// actually created.
-func contractIDs(prefix string) string {
-	switch prefix {
-	case "cyc":
-		return "cyc_01jbq3x8n5r7t9v2w4y6z8a0c1"
-	case "cxl":
-		return "cxl_01jbq3x8n5r7t9v2w4y6z8a0e1"
+// The first cycle and cancellation get the identifiers the contract fixtures
+// use, so that fixture inputs naming them refer to what the ledger created.
+const (
+	contractCycleID  = "cyc_01jbq3x8n5r7t9v2w4y6z8a0c1"
+	contractCancelID = "cxl_01jbq3x8n5r7t9v2w4y6z8a0e1"
+)
+
+// newContractIDs yields cyc_..c1, c2, ... and cxl_..e1, e2, ... in order. Later
+// identifiers differ, so a second cycle on the same pull request does not collide.
+func newContractIDs() func(string) string {
+	var mu sync.Mutex
+	counts := map[string]int{}
+	return func(prefix string) string {
+		mu.Lock()
+		defer mu.Unlock()
+		counts[prefix]++
+		n := counts[prefix]
+		switch prefix {
+		case "cyc":
+			return fmt.Sprintf("cyc_01jbq3x8n5r7t9v2w4y6z8a0c%d", n)
+		case "cxl":
+			return fmt.Sprintf("cxl_01jbq3x8n5r7t9v2w4y6z8a0e%d", n)
+		}
+		return fmt.Sprintf("%s_01jbq3x8n5r7t9v2w4y6z8a0z%d", prefix, n)
 	}
-	return prefix + "_01jbq3x8n5r7t9v2w4y6z8a0z9"
 }
 
 func contractFixture(t *testing.T, schema, name string) map[string]any {
@@ -44,16 +60,16 @@ func contractFixture(t *testing.T, schema, name string) map[string]any {
 // （schemaVersion は契約で必須。過去に tool の入力型がこれを持たず、契約どおりの
 // クライアントが全 tool で拒否された。）
 func TestReviewRequestAcceptsContractInputFixtures(t *testing.T) {
-	f := newRequestFixtureWith(t, true, func(d *reviewrequest.Deps) { d.NewID = contractIDs })
+	f := newRequestFixtureWith(t, true, func(d *reviewrequest.Deps) { d.NewID = newContractIDs() })
 	alice := f.connect("alice")
 
 	created := ok(t, call(t, alice, "request_review", contractFixture(t, "request_review.input", "opened")), "request_review.output")
-	if created["cycleId"] != contractIDs("cyc") || created["round"] != float64(1) {
+	if created["cycleId"] != contractCycleID || created["round"] != float64(1) {
 		t.Fatalf("unexpected output for the contract fixture: %+v", created)
 	}
 
 	snap := ok(t, call(t, alice, "get_review_request", contractFixture(t, "get_review_request.input", "cycle")), "snapshot")
-	if snap["cycleId"] != contractIDs("cyc") {
+	if snap["cycleId"] != contractCycleID {
 		t.Fatalf("unexpected snapshot: %+v", snap)
 	}
 

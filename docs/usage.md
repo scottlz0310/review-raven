@@ -107,6 +107,21 @@ REVIEW_RAVEN_REQUEST_ACL={"users":{"your-login":["your-org/*"]},"operators":["yo
 - Failures are returned as the contract error envelope (`code`, `retryable`). Authorization failures are never bypassed automatically, and a pull request outside the installation is reported as `PERMISSION_DENIED`.
 - The wire contract is in [docs/design/contracts](design/contracts/README.md). Delivery to the reviewer side and execution observations are not part of this change yet: a request stays `dispatch: pending`.
 
+### Internal surface for thread-owl and Squirrel (opt-in)
+
+The reviewer side reports back over a **separate MCP server** on `/internal/mcp`. Its tools (`ingest_review_candidate`, `publish_review_result`, `publish_review_observation`) never appear in the agent-facing tool list, and the route has its own proxy secret.
+
+```env
+REVIEW_RAVEN_INTERNAL_SURFACE=true
+REVIEW_RAVEN_INTERNAL_PROXY_SECRET=<32+ characters, different from REVIEW_RAVEN_PROXY_SECRET>
+REVIEW_RAVEN_SERVICE_ACL={"services":{"svc-owl":{"actions":["ingest","publish_result"],"repos":["your-org/*"]},"svc-squirrel":{"actions":["observe"],"repos":["your-org/*"],"producers":["squirrel-notifier"]}}}
+```
+
+- Requires the review-request tools (`REVIEW_RAVEN_REVIEW_REQUESTS=true`). Startup fails when the ledger, the ACL, the secret, or a secret different from the public one is missing.
+- Authorization is per service principal, operation and repository. A service may call only the operations listed for it; a service that may `observe` may publish only as one of its listed `producers`. A name cannot appear both as a user and as a service, and a user of the public surface cannot call the internal tools.
+- `publish_review_result` stores only a reference to the reviewer's GitHub post. Results for a cycle that was superseded are kept on the old cycle; a result for a cancelled cycle is `CANDIDATE_CANCELLED`; a late delivery for a request removed after its retention is `DELIVERY_EXPIRED`.
+- Observations are accepted only for the candidate the request was dispatched to, and are ordered by `producerEpoch` and `sequence`. Delivery of candidates from raven to thread-owl (the outbox worker) is a separate change: until then a request stays `dispatch: pending` and observations are rejected with `PRODUCER_NOT_ASSIGNED`.
+
 ### Check health
 
 ```bash
