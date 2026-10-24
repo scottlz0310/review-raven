@@ -93,6 +93,8 @@ func TestLoadDeliveryConfig(t *testing.T) {
 	const (
 		url   = "https://gateway.example/mcp/thread-owl-internal"
 		token = "service-credential-0123456789abcdef"
+		// a private container network reaches the gateway by its service name
+		serviceURL = "http://mcp-gateway:8080/mcp/thread-owl-internal"
 	)
 
 	cases := []struct {
@@ -100,28 +102,39 @@ func TestLoadDeliveryConfig(t *testing.T) {
 		url          string
 		token        string
 		interval     string
+		plain        string
 		ledger       bool
 		wantConfig   bool
 		wantInterval time.Duration
+		wantPlain    bool
 		wantErr      bool
 	}{
-		{"off by default", "", "", "", false, false, 0, false},
-		{"on with the default interval", url, token, "", true, true, 5 * time.Second, false},
-		{"on with an interval", url, token, "30", true, true, 30 * time.Second, false},
-		{"loopback http is allowed", "http://127.0.0.1:8084/mcp", token, "", true, true, 5 * time.Second, false},
-		{"values are trimmed", "  " + url + "  ", "  " + token + "  ", " 10 ", true, true, 10 * time.Second, false},
-		{"url without a credential", url, "", "", true, false, 0, true},
-		{"credential without a url", "", token, "", true, false, 0, true},
-		{"without the review-request ledger", url, token, "", false, false, 0, true},
-		{"plain http to another host", "http://gateway.example/mcp", token, "", true, false, 0, true},
-		{"credentials embedded in the url", "https://user:pass@gateway.example/mcp", token, "", true, false, 0, true},
-		{"interval not a number", url, token, "fast", true, false, 0, true},
-		{"interval zero", url, token, "0", true, false, 0, true},
-		{"interval too long", url, token, "3601", true, false, 0, true},
+		{"off by default", "", "", "", "", false, false, 0, false, false},
+		{"on with the default interval", url, token, "", "", true, true, 5 * time.Second, false, false},
+		{"on with an interval", url, token, "30", "", true, true, 30 * time.Second, false, false},
+		{"loopback http is allowed", "http://127.0.0.1:8084/mcp", token, "", "", true, true, 5 * time.Second, false, false},
+		{"values are trimmed", "  " + url + "  ", "  " + token + "  ", " 10 ", "", true, true, 10 * time.Second, false, false},
+		{"url without a credential", url, "", "", "", true, false, 0, false, true},
+		{"credential without a url", "", token, "", "", true, false, 0, false, true},
+		{"without the review-request ledger", url, token, "", "", false, false, 0, false, true},
+		{"plain http to another host", "http://gateway.example/mcp", token, "", "", true, false, 0, false, true},
+		{"plain http to a service name is refused by default", serviceURL, token, "", "", true, false, 0, false, true},
+		{"plain http to a service name, opted in", serviceURL, token, "", "true", true, true, 5 * time.Second, true, false},
+		{"opt-in accepts 1 and on", serviceURL, token, "", " 1 ", true, true, 5 * time.Second, true, false},
+		{"opt-in off is the default", serviceURL, token, "", "false", true, false, 0, false, true},
+		{"opt-in with an unrecognised value", serviceURL, token, "", "yes", true, false, 0, false, true},
+		{"opt-in with an unrecognised value even when the url is https", url, token, "", "maybe", true, false, 0, false, true},
+		{"opt-in does not relax credentials in the url", "http://user:pass@mcp-gateway:8080/mcp", token, "", "true", true, false, 0, false, true},
+		{"opt-in does not relax the scheme", "ftp://mcp-gateway/mcp", token, "", "true", true, false, 0, false, true},
+		{"opt-in alone enables nothing", "", "", "", "true", true, false, 0, false, false},
+		{"credentials embedded in the url", "https://user:pass@gateway.example/mcp", token, "", "", true, false, 0, false, true},
+		{"interval not a number", url, token, "fast", "", true, false, 0, false, true},
+		{"interval zero", url, token, "0", "", true, false, 0, false, true},
+		{"interval too long", url, token, "3601", "", true, false, 0, false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, interval, err := loadDeliveryConfig(tc.url, tc.token, tc.interval, tc.ledger)
+			cfg, interval, err := loadDeliveryConfig(tc.url, tc.token, tc.interval, tc.plain, tc.ledger)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("loadDeliveryConfig() error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -133,6 +146,9 @@ func TestLoadDeliveryConfig(t *testing.T) {
 			}
 			if cfg != nil && cfg.Token != token {
 				t.Fatalf("the credential must be trimmed, got %q", cfg.Token)
+			}
+			if cfg != nil && cfg.AllowPlainHTTP != tc.wantPlain {
+				t.Fatalf("AllowPlainHTTP = %v, want %v", cfg.AllowPlainHTTP, tc.wantPlain)
 			}
 		})
 	}

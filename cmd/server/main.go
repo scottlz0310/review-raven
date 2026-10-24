@@ -258,7 +258,8 @@ func loadConfig() config {
 	}
 	owlDelivery, deliveryInterval, err := loadDeliveryConfig(
 		os.Getenv("REVIEW_RAVEN_OWL_INTERNAL_URL"), os.Getenv("REVIEW_RAVEN_OWL_INTERNAL_TOKEN"),
-		os.Getenv("REVIEW_RAVEN_DELIVERY_INTERVAL_SEC"), reviewACL != nil)
+		os.Getenv("REVIEW_RAVEN_DELIVERY_INTERVAL_SEC"),
+		os.Getenv("REVIEW_RAVEN_OWL_INTERNAL_ALLOW_PLAIN_HTTP"), reviewACL != nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "review-raven: invalid delivery configuration: %v\n", err)
 		os.Exit(1)
@@ -292,7 +293,7 @@ const defaultDeliveryInterval = 5 * time.Second
 // The URL and the credential are set together or not at all, delivery needs the
 // review-request ledger, and the endpoint must be https (or loopback http):
 // a half-configured or clear-text delivery is a startup error, never a fallback.
-func loadDeliveryConfig(rawURL, token, rawInterval string, ledgerEnabled bool) (*owlclient.Config, time.Duration, error) {
+func loadDeliveryConfig(rawURL, token, rawInterval, rawAllowPlainHTTP string, ledgerEnabled bool) (*owlclient.Config, time.Duration, error) {
 	rawURL, token = strings.TrimSpace(rawURL), strings.TrimSpace(token)
 	if rawURL == "" && token == "" {
 		return nil, 0, nil
@@ -303,7 +304,11 @@ func loadDeliveryConfig(rawURL, token, rawInterval string, ledgerEnabled bool) (
 	if !ledgerEnabled {
 		return nil, 0, errors.New("delivery to thread-owl requires REVIEW_RAVEN_REVIEW_REQUESTS=true")
 	}
-	endpoint, err := owlclient.ValidateEndpoint(rawURL)
+	allowPlainHTTP, err := parseFlag("REVIEW_RAVEN_OWL_INTERNAL_ALLOW_PLAIN_HTTP", rawAllowPlainHTTP)
+	if err != nil {
+		return nil, 0, err
+	}
+	endpoint, err := owlclient.ValidateEndpoint(rawURL, allowPlainHTTP)
 	if err != nil {
 		return nil, 0, fmt.Errorf("REVIEW_RAVEN_OWL_INTERNAL_URL: %w", err)
 	}
@@ -315,7 +320,20 @@ func loadDeliveryConfig(rawURL, token, rawInterval string, ledgerEnabled bool) (
 		}
 		interval = time.Duration(seconds) * time.Second
 	}
-	return &owlclient.Config{Endpoint: endpoint, Token: token}, interval, nil
+	return &owlclient.Config{Endpoint: endpoint, Token: token, AllowPlainHTTP: allowPlainHTTP}, interval, nil
+}
+
+// parseFlag reads an optional boolean setting; empty means off. Anything else
+// than a recognised value is a startup error, never a silent "off".
+func parseFlag(name, raw string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "false", "0", "off":
+		return false, nil
+	case "true", "1", "on":
+		return true, nil
+	default:
+		return false, fmt.Errorf("%s must be true or false, got %q", name, raw)
+	}
 }
 
 // loadInternalSurfaceConfig reads the opt-in switch, the service ACL and the

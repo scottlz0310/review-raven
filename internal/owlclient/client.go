@@ -32,6 +32,9 @@ type Config struct {
 	// Token is the service credential presented as a Bearer token. The gateway
 	// maps it to the service principal; it is never logged.
 	Token string
+	// AllowPlainHTTP permits an http endpoint on a non-loopback host. Opt-in only,
+	// for a private container network; the default stays https or loopback.
+	AllowPlainHTTP bool
 	// HTTPClient overrides the HTTP client (tests, proxies). Nil uses a client
 	// without a global timeout: each call is bounded by its context instead.
 	HTTPClient *http.Client
@@ -47,9 +50,11 @@ type Client struct {
 var _ reviewrequest.Deliverer = (*Client)(nil)
 
 // ValidateEndpoint accepts an https URL, or an http URL only for a loopback host
-// (the credential must not cross a network in clear text). It returns the
-// normalized URL.
-func ValidateEndpoint(raw string) (string, error) {
+// (the credential must not cross a network in clear text). allowPlainHTTP is an
+// explicit opt-in for any host, meant for a private container network where the
+// gateway is reached by its service name; it never relaxes the other checks. It
+// returns the normalized URL.
+func ValidateEndpoint(raw string, allowPlainHTTP bool) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" {
 		return "", fmt.Errorf("invalid thread-owl endpoint %q", raw)
@@ -60,7 +65,7 @@ func ValidateEndpoint(raw string) (string, error) {
 	switch u.Scheme {
 	case "https":
 	case "http":
-		if !isLoopback(u.Hostname()) {
+		if !allowPlainHTTP && !isLoopback(u.Hostname()) {
 			return "", errors.New("a plain http thread-owl endpoint is only allowed on a loopback host")
 		}
 	default:
@@ -79,7 +84,7 @@ func isLoopback(host string) bool {
 
 // New validates cfg and returns a Client.
 func New(cfg Config) (*Client, error) {
-	endpoint, err := ValidateEndpoint(cfg.Endpoint)
+	endpoint, err := ValidateEndpoint(cfg.Endpoint, cfg.AllowPlainHTTP)
 	if err != nil {
 		return nil, err
 	}
