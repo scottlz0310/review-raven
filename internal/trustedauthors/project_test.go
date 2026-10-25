@@ -48,3 +48,25 @@ func TestParseProjectFile(t *testing.T) {
 		})
 	}
 }
+
+func TestParseProjectFileErrorRepeatsOnlyAnExcerptOfALongValue(t *testing.T) {
+	long := strings.Repeat("!", 600)
+	for _, tt := range []struct {
+		name  string
+		input string
+	}{
+		{name: "invalid login", input: `{"version":1,"additional_logins":["` + long + `"]}`},
+		{name: "duplicate", input: `{"version":1,"additional_logins":["` + strings.Repeat("a", 600) + `","` + strings.Repeat("A", 600) + `"]}`},
+		{name: "multibyte", input: `{"version":1,"additional_logins":["` + strings.Repeat("あ", 600) + `"]}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseProjectFile([]byte(tt.input))
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if n := len([]rune(err.Error())); n > 300 {
+				t.Fatalf("error message has %d characters; it must not repeat the whole value", n)
+			}
+		})
+	}
+}

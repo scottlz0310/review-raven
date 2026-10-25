@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/jsonschema-go/jsonschema"
 
@@ -389,4 +390,52 @@ func withExtra(s Snapshot) Snapshot {
 	out := s
 	out.IssueComments = append(append([]Comment{}, s.IssueComments...), Comment{Kind: KindIssueComment, ID: "9", Author: "thread-owl", AuthorType: "Bot"})
 	return out
+}
+
+// 不正なプロジェクト allowlist のエラーが長くても、失敗の応答は契約（message は 500 文字以内）を満たす。
+func TestProjectAllowlistErrorStaysWithinTheContract(t *testing.T) {
+	errorSchema := resolveSchema(t, "read_pr_comments.error.schema.json")
+	for _, value := range []string{strings.Repeat("!", 600), strings.Repeat("あ", 600)} {
+		_, parseErr := trustedauthors.ParseProjectFile([]byte(`{"version":1,"additional_logins":["` + value + `"]}`))
+		if parseErr == nil {
+			t.Fatal("expected the project file to be rejected")
+		}
+		src := &failingProjectSource{err: errors.Join(ErrProjectAllowlistInvalid, parseErr)}
+		_, err := Read(context.Background(), src, []string{"thread-owl"})
+
+		var gateErr *Error
+		if !errors.As(err, &gateErr) || gateErr.Code != CodeProjectAllowlistInvalid {
+			t.Fatalf("error = %v, want %s", err, CodeProjectAllowlistInvalid)
+		}
+		validateAgainst(t, errorSchema, ToErrorEnvelope(gateErr))
+	}
+}
+
+// 上流のエラーがどれだけ長くても、契約の長さを超えず、文字の途中では切らない。
+func TestErrorEnvelopeClampsLongMessagesOnACharacterBoundary(t *testing.T) {
+	errorSchema := resolveSchema(t, "read_pr_comments.error.schema.json")
+	for _, msg := range []string{strings.Repeat("x", 501), strings.Repeat("あ", 2000), strings.Repeat("x", 500)} {
+		envelope := ToErrorEnvelope(&Error{Code: CodeSnapshotChanged, Message: msg})
+		got := envelope.Error.Message
+		if n := len([]rune(got)); n > MaxMessageLength {
+			t.Fatalf("message has %d characters, want at most %d", n, MaxMessageLength)
+		}
+		if !utf8.ValidString(got) {
+			t.Fatalf("message is not valid UTF-8 after clamping: %q", got)
+		}
+		if len([]rune(msg)) <= MaxMessageLength && got != msg {
+			t.Fatalf("a message within the limit must not change: %q", got)
+		}
+		validateAgainst(t, errorSchema, envelope)
+	}
+}
+
+type failingProjectSource struct{ err error }
+
+func (s *failingProjectSource) Fetch(context.Context, bool) (Snapshot, error) {
+	return Snapshot{HeadSHA: strings.Repeat("1", 40), BaseSHA: strings.Repeat("2", 40)}, nil
+}
+
+func (s *failingProjectSource) ProjectAllowlist(context.Context, string) (ProjectAllowlist, error) {
+	return ProjectAllowlist{}, s.err
 }

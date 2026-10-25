@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 // ProjectFilePath is the repository-relative path of the project-specific
@@ -17,6 +18,19 @@ const ProjectFilePath = ".review-raven/trusted-comment-authors.json"
 type projectFile struct {
 	Version          *int      `json:"version"`
 	AdditionalLogins *[]string `json:"additional_logins"`
+}
+
+// maxExcerpt bounds how much of a rejected value an error message repeats, so that a
+// very long entry cannot make the message (which reaches the reader's error response)
+// arbitrarily long.
+const maxExcerpt = 64
+
+func excerpt(s string) string {
+	r := []rune(s)
+	if len(r) > maxExcerpt {
+		return strconv.Quote(string(r[:maxExcerpt])) + "..."
+	}
+	return strconv.Quote(s)
 }
 
 // ParseProjectFile validates the project allowlist file and returns the
@@ -49,10 +63,10 @@ func ParseProjectFile(data []byte) ([]string, error) {
 	for _, raw := range *file.AdditionalLogins {
 		normalized := Normalize(raw)
 		if !loginPattern.MatchString(normalized) {
-			return nil, fmt.Errorf("%s: additional_logins entry must be a GitHub login (wildcards are not allowed): %q", ProjectFilePath, raw)
+			return nil, fmt.Errorf("%s: additional_logins entry must be a GitHub login (wildcards are not allowed): %s", ProjectFilePath, excerpt(raw))
 		}
 		if _, dup := seen[normalized]; dup {
-			return nil, fmt.Errorf("%s: additional_logins has a duplicate after normalization: %q", ProjectFilePath, raw)
+			return nil, fmt.Errorf("%s: additional_logins has a duplicate after normalization: %s", ProjectFilePath, excerpt(raw))
 		}
 		seen[normalized] = struct{}{}
 		logins = append(logins, normalized)

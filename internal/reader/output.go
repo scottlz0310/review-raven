@@ -142,10 +142,23 @@ func outputComments(in []Comment) []OutputComment {
 	return out
 }
 
+// MaxMessageLength is the longest error message the contract allows (in characters).
+const MaxMessageLength = 500
+
+// clampMessage keeps a message within the contract, whatever an upstream error
+// put in it. It cuts on a character boundary.
+func clampMessage(msg string) string {
+	r := []rune(msg)
+	if len(r) <= MaxMessageLength {
+		return msg
+	}
+	return string(r[:MaxMessageLength-3]) + "..."
+}
+
 // ToErrorEnvelope renders a failure. retryable is true only when the same call
 // can succeed later without any change on the pull request's side.
 func ToErrorEnvelope(e *Error) ErrorEnvelope {
-	detail := ErrorDetail{Code: e.Code, Message: e.Message, Retryable: e.Code == CodeSnapshotChanged}
+	detail := ErrorDetail{Code: e.Code, Message: clampMessage(e.Message), Retryable: e.Code == CodeSnapshotChanged}
 	if len(e.Comments) > 0 {
 		refs := make([]OutputCommentRef, 0, len(e.Comments))
 		for _, c := range e.Comments {
