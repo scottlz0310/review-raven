@@ -40,6 +40,7 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `wait_for_copilot_review` | legacy blocking wait（fallback） |
 | `diagnose_github_token` | 現在のトークンの login と OAuth スコープ(`X-OAuth-Scopes` レスポンスヘッダー由来)を返す。`PERMISSION_DENIED` の原因切り分け用 |
 | `get_trusted_comment_authors` | PR のコメントの本文を、エージェントの文脈に入れてよい投稿者の許可リスト（サーバーの `TRUSTED_COMMENT_AUTHORS`）を返す。read-only。未設定のときは `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する |
+| `read_pr_comments` | _専用 App モードのみ。_ PR の review thread のコメント・review body・issue comment の本文を、ツール自身が全コメントの投稿者を検証した上で返す（全ページのメタデータ→許可リスト→本文の順）。許可外の投稿者、または投稿者を特定できないコメントが 1 件でもあれば、本文を一切読まずに止まり（`UNTRUSTED_COMMENT` / `AUTHOR_CHECK_FAILED`）、検証後に変わった本文は返さない（`SNAPSHOT_CHANGED`）。成功の `snapshotId` は、後の再取得との比較に使う。契約: [docs/design/contracts/reader](docs/design/contracts/reader/README.md) |
 | `request_review` | _opt-in。専用 App モードのみ。_ 期待する PR の HEAD に固定してレビューを依頼する（初回と再依頼は同じ入口）。主体と PR の範囲で冪等。購読先の `review-raven://requests/{cycleId}` を返す |
 | `get_review_request` | _opt-in。_ レビュー依頼の現在の snapshot（配送・取消・実行観測・結果参照・`terminal`）を返す |
 | `cancel_review_request` | _opt-in。_ 結果なしで失敗した依頼を明示的に取り消し、同じ HEAD を新しい round で依頼し直せるようにする |

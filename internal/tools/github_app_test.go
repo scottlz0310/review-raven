@@ -142,7 +142,7 @@ func TestGitHubAppModeSurface(t *testing.T) {
 			}
 			sort.Strings(names)
 			if appMode {
-				want := []string{"get_review_threads", "get_trusted_comment_authors", "list_check_runs_for_sha", "reply_and_resolve_review_thread", "reply_to_review_thread", "resolve_review_thread"}
+				want := []string{"get_review_threads", "get_trusted_comment_authors", "list_check_runs_for_sha", "read_pr_comments", "reply_and_resolve_review_thread", "reply_to_review_thread", "resolve_review_thread"}
 				if !reflect.DeepEqual(names, want) {
 					t.Fatalf("公開tool=%v", names)
 				}

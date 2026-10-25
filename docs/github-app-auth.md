@@ -39,10 +39,11 @@ installation tokenをメモリで共有し、有効期限の5分前から次のt
 - `reply_and_resolve_review_thread`
 - `list_check_runs_for_sha`
 - `get_trusted_comment_authors`
+- `read_pr_comments`
 
 Copilot系8 tool、`diagnose_github_token`、watch resource templateは登録せず、watch managerも起動しない。旧watchのURIは取得・購読できない。`gateway`モードでは従来の15 tool・watch・delegated background accessを維持する。
 
-スレッド取得の既存契約は変えない。投稿者ゲートはmetadata全ページ取得→許可リスト照合→本文取得の順に行う。`include_bodies=false`ではGraphQL queryにも本文を含めない。本文取得tool自体に新しい投稿者ゲートを追加する変更ではない。
+スレッド取得の既存契約は変えない。投稿者ゲートはmetadata全ページ取得→許可リスト照合→本文取得の順に行う。`include_bodies=false`ではGraphQL queryにも本文を含めない。既存の`get_review_threads`は本文取得tool自体に投稿者ゲートを強制しない。投稿者検証を強制して本文を返すreaderが`read_pr_comments`で、専用Appモードだけで公開する（旧`gateway`モードの公開面は変えない）。契約は[docs/design/contracts/reader](design/contracts/reader/README.md)。
 
 reader/Q4、PR conversation投稿tool、PR本文更新/Q3は今回追加しない。現行skillが`{GH}`で行う投稿はgateway bot名義のままなので、Q8全体の完了は後続の経路置換まで保留する。
 
