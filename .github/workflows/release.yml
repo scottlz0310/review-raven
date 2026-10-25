@@ -1,9 +1,8 @@
-name: Release Container Image
+name: Development Container Image
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:

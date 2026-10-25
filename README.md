@@ -1,5 +1,7 @@
 # review-raven
 
+安定版の準備・公開は [リリース手順](docs/release-automation.md) を参照してください。
+
 <p align="center">
   <img src="assets/review_raven_avatar.png" alt="review-raven" width="150">
 </p>
