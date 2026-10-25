@@ -109,6 +109,7 @@ reviewed 側 skill の Phase W（`references/review-wait.md`）を、次のよ�
 1. `enqueue_review` の直後に、`review://status` の購読（完了の判定）と、案 C の監視（進捗の途中報告）を並べて起動する。2 つの責務は混ぜない。
 2. 逐次通知を受け取れる CLI（Claude Code の `Monitor` など）では、監視の出力をそのまま途中報告に使う。受け取れない CLI では、終了時に 1 回だけ最終状態を読む現行の形にフォールバックする。
 3. `action_required` / `unobservable` / `timeout` を、現行の `REVIEW_WAIT_TIMEOUT` の判断（公開状態の確認）に結び付ける。
+   完了の判定は PR の Verdict と `review://status` の `headSha` で行うので、Verdict が先に届いたら、`finished` の通知を待たずに完了の判定へ進んでよい（実 round で、Verdict が `finished` より先に届くことを確認した）。
 4. 反映は、使い心地の確認の結果を踏まえて、別の PR で行う。
 
 ### 実装の置き場所
@@ -129,10 +130,12 @@ bash と jq の試作で、模擬の `review-status.json` を使い、実物の 
 | 前の round の終了だけがある | 拾わない。`not_received` |
 | ファイルが無い | 試作の初版は無通知だった。`unobservable reason=no_file` を出すよう修正した |
 | 実物のファイル（対象 PR なし） | `not_received` からタイムアウトまで、想定どおり |
+| **実物の round（thread-owl#292、約 2 分）** | 通知は 3 件だけだった: `waiting ciPending`（CI 確定待ち）→ `running` → `finished outcome=completed exit=0`。`finished` で終了コード 0 で自動終了。情報量は十分で、頻度も適切。**reviewer の Verdict の投稿（10:57:07）が、`finished` の通知より先に届いた**（プロセスの終了は Verdict の後）。設計の「`finished` は Verdict ではない」を裏付ける |
 
 ## 未確認・リスク・決めること
 
-- **実際のレビュー round での使い心地。** 模擬データでの確認で、実物の round（CI 待ち → 実行中 → 終了）は見ていない。通知の頻度と情報量は、次の PR で確かめる。
+- **実際のレビュー round での使い心地。** 1 回（thread-owl#292、約 2 分）は上のとおり確認できた。**長い round（ハートビートが出る長さ）、行列待ち（`busy`）を挟む round、再 round は未確認**。
+- **クライアントの出力の省略。** Codex は、大きなツール出力の中間を省略する（`Warning: truncated output` と `…N tokens truncated…`。review-raven#158 のレビューが、`get_pr` の末尾の `origin` を失って止まった事例。原因と修正は thread-owl#291、#292）。案 C の監視も、1 行を短く保ち、重要な情報を行の先頭側に置く。出力量を抑える設計（状態の変化だけ、ハートビートは低頻度）は、この点でも妥当。
 - **他の CLI。** Codex・Copilot・Antigravity が、`Monitor` に相当する逐次通知を受け取れるかは未確認。
 - **同じ PR で前の round が走っている間。** 契約上、前の round の項目が `items[]` に残る場合、今回の round が見えず、`not_received` になる可能性がある。
 - **`autoPause` の詳細。** 原因・使用率・再開時刻が公開 JSON に載らない（ハンドオフの A3）。表示は `autoPause` までにとどまる。
