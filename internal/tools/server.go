@@ -175,6 +175,10 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	RegisterThreadTools(srv, clientProvider)
 	RegisterListCheckRunsForSHATool(srv, clientProvider)
 	RegisterTrustedCommentAuthorsTool(srv, opts.TrustedCommentAuthors)
+	// reader は、投稿者を proxy 検証できる専用 App モードだけで公開する。旧 gateway モードの公開面は変えない。
+	if opts.InstallationTokens != nil {
+		RegisterReadPRCommentsTool(srv, clientProvider, opts.TrustedCommentAuthors)
+	}
 	if requests != nil {
 		requests.SetNotifier(func(cycleID string) {
 			uri := reviewrequest.ResourceURI(cycleID)

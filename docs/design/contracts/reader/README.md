@@ -29,6 +29,10 @@ base=<baseSha>
 
 `kind` は `review_thread_comment` / `review_body` / `issue_comment`、`threadId` は thread のコメントだけ（他は空）、`editedAt` は編集されていなければ空文字。
 
+## ツール
+
+review-raven は `read_pr_comments` として公開する（**専用 GitHub App モードだけ**。旧 `gateway` モードの公開面は変えない）。入力は `{owner, repo, pr}`。成功は output schema、失敗は error schema の envelope を `structuredContent` に返し、失敗の結果は `isError: true`。GitHub の認証・権限のエラーは、他のツールと同じ分類で返す（reader の gate の code ではない）。
+
 ## 構成
 
 | パス | 内容 |

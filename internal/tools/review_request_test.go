@@ -216,7 +216,7 @@ func TestReviewRequestSurface(t *testing.T) {
 		f := newRequestFixture(t, true)
 		session := f.connect("alice")
 		want := slices.Concat([]string{
-			"get_review_threads", "get_trusted_comment_authors", "list_check_runs_for_sha",
+			"get_review_threads", "get_trusted_comment_authors", "list_check_runs_for_sha", "read_pr_comments",
 			"reply_and_resolve_review_thread", "reply_to_review_thread", "resolve_review_thread",
 		}, newTools)
 		slices.Sort(want)

@@ -36,6 +36,7 @@ queue 全体は移設しない。review-raven は依頼の同一性、受付と�
 | `post_inline_comment`、`post_summary_comment`、`post_review_verdict`、`approve_pull_request`、`reply_review_thread` | owl／reviewer | reviewer投稿として維持。返信が両repoにあること自体は越境ではなく、role・投稿identityが異なる |
 | `get_review_threads`、`reply_to_review_thread`、`resolve_review_thread`、`reply_and_resolve_review_thread` | raven／reviewed skill | 修正側操作として維持。metadata-only指定は任意で、tool単体では投稿者検証後の本文取得を強制していない |
 | `get_trusted_comment_authors` | raven／reviewed skill | 保護設定の公開。repo固有allowlistと併用。reviewer側にも同じ検証境界が必要 |
+| `read_pr_comments`（専用Appモード） | raven／reviewed skill | B1のreviewed側reader（[契約](contracts/reader/README.md)）。metadata全ページ→投稿者検証→本文をtool側で強制し、検証後の追加・編集・投稿者やheadの変化を検出して再検証する。skillの利用先の置換（Mcp-Docker）とreviewer側の同等tool（thread-owl#280）は未実施。旧`get_review_threads`は移行完了まで維持 |
 | `list_check_runs_for_sha` | raven／reviewedとreviewer両skill | reviewerからravenへの逆依存。直ちに撤去しない。owl内部のrequired checks検証とは用途が異なる。D3の恒久取得元判断まで現行経路を維持 |
 | Copilot要求・状態・cycle・wait・watch・診断tool、`review-raven://watch/{id}` | raven旧gatewayモード／旧利用者 | 専用Appモードでは非公開。SQLiteの`trigger_log`・`review_watch`はこの旧機能用であり、新しい依頼サイクルと同一視しない。実利用者の廃止監査前に削除しない |
 | `review-status.json` schemaVersion 1 | Squirrel／ローカル利用者、待機skill | 実行観測。waiting/running/finished、holdReason、eventId、round、時刻、exitCodeを持つ。HEADを持たず、owlのroundと同一ではない。新しい送信用envelopeで対応付ける |
@@ -166,7 +167,7 @@ Squirrelは状態変化時と60秒heartbeatで送信する。ravenの受信時�
 - 内部面はgatewayで登録したサービス主体を、raven候補配送・owlイベント/結果送信・Squirrel観測送信へ分離する。既存のユーザーBearer、`requestedBy`、自己申告のproducerIdで代替しない。サーバー側の保護設定でsubject→許可操作→repo scopeを束縛する。鍵配布・rotation・失効の設定はMcp-Dockerが担当する。
 - Squirrelの送信主体は担当candidateへの割当と照合する。別PR・HEAD・producerの観測は拒否する。観測APIにreviewer選択変更・起動・承認・マージの操作を含めない。
 - 公開観測は状態code・時刻・対応ID等の許可項目だけをschemaで選択する。ローカルパス・コマンドライン・ログ本文・秘密値を送信しない。
-- review thread、review body、PR issue commentは未信頼。両roleで本文なしmetadata全ページ→canonical allowlist照合→検証済み本文取得をtool側で強制するreaderを後続実装する。metadata確認後の編集・追加を検出し、スナップショットが変われば再検証する。現行の任意`include_bodies=false`を強制済みと記述しない。
+- review thread、review body、PR issue commentは未信頼。両roleで本文なしmetadata全ページ→canonical allowlist照合→検証済み本文取得をtool側で強制するreaderを実装する。metadata確認後の編集・追加を検出し、スナップショットが変われば再検証する。reviewed側は`read_pr_comments`（専用Appモード）で実装済みだが、skillの利用先の置換とreviewer側（thread-owl#280）は未実施のため、全体としては強制済みと記述しない。既存の任意`include_bodies=false`は強制ではない。
 - 結果参照の回復でも投稿者・対象PR・HEAD・cycle相関を検証する。スレッド未解決0件やstatusだけでAPPROVED扱いにしない。CI、Verdict、未解決thread、利用者のマージ許可は別の条件。
 
 ## #497：途中更新の購読と同一セッションへの報告

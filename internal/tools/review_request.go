@@ -126,12 +126,18 @@ func contractToolError(err error) (*mcp.CallToolResult, any, error) {
 // outputOrError is the output schema of a tool: either its success output T or
 // the contract error envelope.
 func outputOrError[T any]() *jsonschema.Schema {
+	return outputOrErrorOf[T, reviewrequest.ErrorEnvelope]()
+}
+
+// outputOrErrorOf is outputOrError with the failure shape chosen by the tool
+// (the reader has its own error codes).
+func outputOrErrorOf[T, E any]() *jsonschema.Schema {
 	success, err := jsonschema.For[T](nil)
 	if err != nil {
 		// 静的な型からの schema 導出に失敗するのは実装の誤り。起動時に止める。
 		panic(fmt.Sprintf("derive output schema: %v", err))
 	}
-	failure, err := jsonschema.For[reviewrequest.ErrorEnvelope](nil)
+	failure, err := jsonschema.For[E](nil)
 	if err != nil {
 		panic(fmt.Sprintf("derive error envelope schema: %v", err))
 	}
