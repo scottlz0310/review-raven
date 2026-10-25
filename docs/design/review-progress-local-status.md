@@ -91,7 +91,7 @@ Squirrel Notifier が公開する `%LocalAppData%\SquirrelNotifier\review-status
 | `action_required` | `holdReason = manual` のとき | 「レビューする」か別 CLI での起動を案内して終了 |
 | `timeout` | 全体の上限（既定 20 分）に達したとき | 再購読するかは、呼び出し側が判断する |
 
-対象は、小文字の `owner/repo#N` と、`enqueued_after`（`enqueue_review` の直前の時刻）より後に受信した項目に限る。**前の round の `finished` を、今回のものとして拾わない。**
+対象は、小文字の `owner/repo#N` と、`enqueued_after`（`enqueue_review` の直前の時刻）より後に受信した項目に限る。**時刻は小数秒まで保持して比較する。** 秒に切り捨てると、同じ秒に起きた enqueue と受信の前後関係を失い、今回の round を永久に拾えなくなる（`--after` も小数秒つきで渡す）。**前の round の `finished` を、今回のものとして拾わない。**
 
 終了コードは、`0` が終了（`finished`）、`3` が手動待ち、`4` がタイムアウトである。終了すると、`Monitor` は完了を通知する。
 
@@ -131,6 +131,7 @@ bash と jq の試作で、模擬の `review-status.json` を使い、実物の 
 | ファイルが無い | 試作の初版は無通知だった。`unobservable reason=no_file` を出すよう修正した |
 | 実物のファイル（対象 PR なし） | `not_received` からタイムアウトまで、想定どおり |
 | **実物の round（thread-owl#292、約 2 分）** | 通知は 3 件だけだった: `waiting ciPending`（CI 確定待ち）→ `running` → `finished outcome=completed exit=0`。`finished` で終了コード 0 で自動終了。情報量は十分で、頻度も適切。**reviewer の Verdict の投稿（10:57:07）が、`finished` の通知より先に届いた**（プロセスの終了は Verdict の後）。設計の「`finished` は Verdict ではない」を裏付ける |
+| 同じ秒内の順序（`enqueued_after` と `receivedAt` が同じ秒） | 初版は小数秒を切り捨てて比較しており、受信が後でも今回の round を除外した（レビューで指摘）。小数秒を保持する比較に直した。確認: 同一秒の受信が後（0.900 > 0.100）は拾う、前（0.050 < 0.100）と同時刻（0.100）は拾わない、小数秒の桁数が違っても（0.9 と 0.1000000）、`--after` が秒精度でも、翌秒でも期待どおり |
 
 ## 未確認・リスク・決めること
 
@@ -194,7 +195,11 @@ emit() { # 1行=1イベント
 # 状態を「state|hold|round|eventId|queue|updatedAt」の1行にする。
 observe() {
   jq -r --arg key "$key" --arg after "$after" '
-    def ts: sub("\\.[0-9]+Z$";"Z") | fromdateiso8601;
+    # 小数秒を保持して比較する。[秒, 小数部(9桁固定の文字列)] の配列は、辞書順で時刻の順になる。
+    # 秒に切り捨てると、同じ秒に起きた enqueue と受信の前後関係を失う。
+    def ts: (sub("\\.[0-9]+Z$";"Z") | fromdateiso8601) as $s
+      | ((capture("\\.(?<f>[0-9]+)Z$").f // "") + "000000000" | .[0:9]) as $f
+      | [$s, $f];
     ([.items[]? | select(.key==$key and (.receivedAt|ts) > ($after|ts))] | first) as $it
     | ([.recent[]? | select(.key==$key and (.receivedAt|ts) > ($after|ts))] | first) as $rc
     | if $it != null then
