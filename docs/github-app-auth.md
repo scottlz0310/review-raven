@@ -31,7 +31,7 @@ installation tokenをメモリで共有し、有効期限の5分前から次のt
 
 ## MCPの公開範囲
 
-専用Appモードでは次の6 toolを公開する。
+専用Appモードでは次のtoolを公開する。
 
 - `get_review_threads`
 - `reply_to_review_thread`
@@ -40,12 +40,13 @@ installation tokenをメモリで共有し、有効期限の5分前から次のt
 - `list_check_runs_for_sha`
 - `get_trusted_comment_authors`
 - `read_pr_comments`
+- `post_runner_escalation`（会話への通知も無応答の場合に、OPEN PR と固定 HEAD を確認して定型コメントを投稿する）
 
 Copilot系8 tool、`diagnose_github_token`、watch resource templateは登録せず、watch managerも起動しない。旧watchのURIは取得・購読できない。`gateway`モードでは従来の15 tool・watch・delegated background accessを維持する。
 
 スレッド取得の既存契約は変えない。投稿者ゲートはmetadata全ページ取得→許可リスト照合→本文取得の順に行う。`include_bodies=false`ではGraphQL queryにも本文を含めない。既存の`get_review_threads`は本文取得tool自体に投稿者ゲートを強制しない。投稿者検証を強制して本文を返すreaderが`read_pr_comments`で、専用Appモードだけで公開する（旧`gateway`モードの公開面は変えない）。契約は[docs/design/contracts/reader](design/contracts/reader/README.md)。
 
-reader/Q4、PR conversation投稿tool、PR本文更新/Q3は今回追加しない。現行skillが`{GH}`で行う投稿はgateway bot名義のままなので、Q8全体の完了は後続の経路置換まで保留する。
+`post_runner_escalation` は `owner`・`repo`・`pr`・40桁の小文字 `headSha` と `reason: resume_unresponsive` を受け付ける。投稿前のPR読取とコメント投稿は不可分ではないため、投稿後にもHEADは変わりうる。通信失敗時は投稿済みか不明なため自動再試行せず、GitHubの状態を確認する。自由文やその他の理由は受け付けず、コメントだけでレビュー完了を意味しない。汎用PR conversation投稿toolとPR本文更新/Q3は提供しない。現行skillが`{GH}`で行う投稿はgateway bot名義のままなので、Q8全体の完了は後続の経路置換まで保留する。
 
 ## 配備とV4検証
 
@@ -59,7 +60,7 @@ reader/Q4、PR conversation投稿tool、PR本文更新/Q3は今回追加しな�
 
    gatewayは受信identityヘッダー・Bearerを上書きし、検証済みidentityと専用の共有Bearerを転送する。review-ravenは共有Bearerが一致した場合だけMCP操作を受け付ける。このBearerはGitHubへ送らない。gatewayのOAuth App設定やGitHub MCP routeは変更しない。共有鍵の未設定・短すぎる値は起動失敗とする。
 
-4. active watchと実行中のレビューがない時間に切り替える。起動ログの照合成功、6 tool、watch非公開、許可リストに`review-raven`があることを確認する。
+4. active watchと実行中のレビューがない時間に切り替える。起動ログの照合成功、上記toolの公開、watch非公開、許可リストに`review-raven`があることを確認する。
 5. 同じ専用App tokenを使うprobe PRで次を検証し、PR URL・thread ID・comment ID・対象HEAD・結果を証跡として記録する。鍵・tokenは記録しない。
 
    | 項目 | 合格条件 |

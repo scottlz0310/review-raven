@@ -23,7 +23,7 @@ review-ravenはレビューそのものを行わない。thread-owlのreviewer�
 
 ## 現行実装
 
-専用GitHub Appモードはreviewed用6 tool（thread取得・返信・resolve・reply_and_resolve、SHA固定check runs、trusted authors）を公開する。review-ravenがinstallation tokenを発行・更新し、gatewayの検証済みidentityと専用共有Bearerを要求する。詳細は [App認証](github-app-auth.md) を参照する。
+専用GitHub Appモードはレビュー対応の取得・返信・resolve、SHA固定check runs、投稿者検証、ランナーの定型エスカレーションを公開する。review-ravenがinstallation tokenを発行・更新し、gatewayの検証済みidentityと専用共有Bearerを要求する。詳細は [App認証](github-app-auth.md) を参照する。
 
 既定のgatewayモードにはCopilot要求・状態・cycle・wait・watch・診断も残る。watchのresourceは `review-raven://watch/{id}`、永続状態はSQLiteの `trigger_log` / `review_watch`。専用Appではこれらのtool/resourceを非公開とする。新しいレビュー依頼の永続台帳はまだない。
 
