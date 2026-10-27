@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 専用 GitHub App モードに `post_runner_escalation` を追加した。会話への通知が無応答のとき、OPEN PR と固定 HEAD を確認して定型コメントを投稿する。投稿失敗時の自動再試行は行わない。
+
 - 安定版の prepare・draft・イメージ生成/再取得検証・finalize を release-automate へ統一した。2言語 CHANGELOG を同時に確定し、日本語本文へ Docker・検証証跡を追記する。開発版の main イメージ配布は維持し、タグ起点の旧公開は廃止する。
 
 - Added a design proposal that revises the review state sharing and progress observation (#144): keep PR + GitHub App identity + the trusted-author allowlist as the shared state, observe progress by subscribing to Squirrel Notifier's local `review-status.json` with `resource-bridge-cli` (option C), and freeze the service-authenticated internal link (no new GitHub users). Documentation only: `docs/design/review-progress-local-status.md`. Nothing is implemented, released or removed.

@@ -23,7 +23,7 @@ review-raven does not perform reviews. thread-owl retains its internal reviewer 
 
 ## Current implementation
 
-The dedicated GitHub App mode exposes six reviewed-side tools: thread retrieval, reply, resolution, reply-and-resolve, check runs for a pinned SHA, and trusted authors. review-raven issues and refreshes installation tokens and requires the gateway's verified identity and dedicated shared Bearer credential. See [GitHub App authentication](github-app-auth.md) (Japanese).
+専用GitHub Appモードはレビュー対応の取得・返信・resolve、SHA固定check runs、投稿者検証、ランナーの定型エスカレーションを公開する。review-ravenがinstallation tokenを発行・更新し、gatewayの検証済みidentityと専用共有Bearerを要求する。詳細は [App認証](github-app-auth.md) を参照する。
 
 The default gateway mode also retains Copilot requests, status, cycle, wait, watch, and diagnostic tools. Watch resources use `review-raven://watch/{id}`; their persistent state resides in SQLite's `trigger_log` and `review_watch` tables. The dedicated App mode does not expose those tools or resources. There is no persistent ledger for the new review-request workflow yet.
 

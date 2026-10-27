@@ -11,6 +11,8 @@
 
 ### 追加
 
+- 専用 GitHub App モードに `post_runner_escalation` を追加した。会話への通知が無応答のとき、OPEN PR と固定 HEAD を確認して定型コメントを投稿する。投稿失敗時の自動再試行は行わない。
+
 - 安定版の prepare・draft・イメージ生成/再取得検証・finalize を release-automate へ統一した。2言語 CHANGELOG を同時に確定し、日本語本文へ Docker・検証証跡を追記する。開発版の main イメージ配布は維持し、タグ起点の旧公開は廃止する。
 
 - レビュー状態の共有と進捗観測の見直し案を追加した（#144）。共有の状態は PR・GitHub App の身元・投稿者の許可リストのまま、進捗は Squirrel Notifier のローカルの `review-status.json` を `resource-bridge-cli` で購読して得る（案 C）。サービス間認証を要する内部連携は凍結し、GitHub ユーザーを増やさない。文書のみ: `docs/design/review-progress-local-status.md`。実装・リリース・削除は未実施。

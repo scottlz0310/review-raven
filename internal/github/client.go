@@ -958,6 +958,29 @@ func (c *Client) PullRequestHead(ctx context.Context, owner, repo string, prNumb
 	return sha, nil
 }
 
+// PostEscalationComment は PR の状態と HEAD を確認してから定型コメントを投稿する。
+// GitHub の確認と投稿は不可分ではないため、結果不明時に自動再試行してはならない。
+func (c *Client) PostEscalationComment(ctx context.Context, owner, repo string, prNumber int, expectedSHA, body string) (string, string, error) {
+	pr, _, err := c.gh.PullRequests.Get(ctx, owner, repo, prNumber)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get PR before escalation: %w", err)
+	}
+	if pr.GetState() != "open" {
+		return "", "", fmt.Errorf("PR is not open")
+	}
+	if pr.GetHead().GetSHA() != expectedSHA {
+		return "", "", fmt.Errorf("PR head does not match expected SHA")
+	}
+	comment, _, err := c.gh.Issues.CreateComment(ctx, owner, repo, prNumber, &github.IssueComment{Body: github.Ptr(body)})
+	if err != nil {
+		return "", "", fmt.Errorf("failed to post escalation comment; outcome may be unknown: %w", err)
+	}
+	if comment.GetID() <= 0 || comment.GetHTMLURL() == "" {
+		return "", "", fmt.Errorf("escalation comment response is incomplete; outcome may be unknown")
+	}
+	return strconv.FormatInt(comment.GetID(), 10), comment.GetHTMLURL(), nil
+}
+
 // CheckRun is a check run reported for a commit. No pass/fail judgement is applied.
 type CheckRun struct {
 	ID      int64

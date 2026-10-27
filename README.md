@@ -23,7 +23,7 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 
 ## Tools
 
-専用Appモード（`REVIEW_RAVEN_AUTH_MODE=github-app`）の認証・6 toolの公開範囲・移行手順は[専用GitHub App認証](docs/github-app-auth.md)を参照してください。既定の`gateway`モードは従来の機能を維持します。
+専用Appモード（`REVIEW_RAVEN_AUTH_MODE=github-app`）の認証・toolの公開範囲・移行手順は[専用GitHub App認証](docs/github-app-auth.md)を参照してください。既定の`gateway`モードは従来の機能を維持します。
 
 | Tool | Description |
 |---|---|
@@ -42,6 +42,7 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 | `wait_for_copilot_review` | Legacy blocking wait (fallback) |
 | `diagnose_github_token` | Report the current token's login and OAuth scopes (from the `X-OAuth-Scopes` response header) for diagnosing `PERMISSION_DENIED` failures |
 | `get_trusted_comment_authors` | Return the allowlist of PR comment authors whose text may enter an agent's context (the server's `TRUSTED_COMMENT_AUTHORS`). Read-only; fails with `TRUSTED_AUTHORS_NOT_CONFIGURED` when unset |
+| `post_runner_escalation` | 専用Appモードのみ。会話への通知が無応答の場合に、OPEN PRと固定HEADを確認して定型の対応依頼を投稿する。通信失敗時は自動再試行しない |
 | `read_pr_comments` | _Dedicated App mode only._ Return the text of a PR's review thread comments, review bodies and issue comments after the tool itself has checked every comment's author (metadata of every page, then the allowlist, then the text). One comment by an author who is not allowed, or whose author is unknown, stops it without reading any text (`UNTRUSTED_COMMENT` / `AUTHOR_CHECK_FAILED`); text that changed between the check and the read is never returned (`SNAPSHOT_CHANGED`). The success carries a `snapshotId` to compare on a later read. Contract: [docs/design/contracts/reader](docs/design/contracts/reader/README.md) |
 | `request_review` | _Opt-in, dedicated App mode only._ Request a review (first request and re-request share this entry point) bound to the expected PR head. Idempotent per principal and PR; returns the `review-raven://requests/{cycleId}` URI to subscribe to |
 | `get_review_request` | _Opt-in._ Return the current snapshot of a review request (dispatch, cancellation, execution observation, result reference, `terminal`) |
