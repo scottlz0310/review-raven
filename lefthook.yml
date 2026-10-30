@@ -3,6 +3,8 @@ pre-commit:
   commands:
     vet:
       run: go vet ./...
+    tidy:
+      run: go mod tidy -diff
 
 pre-push:
   parallel: true
