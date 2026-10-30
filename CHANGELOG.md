@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated `github.com/google/go-github` from `v89` to `v93` (#164).
+
 - Clarified recovery for review cycles that fail without a result: an authorized cancellation must be acknowledged before a new cycle and round can be requested for the same HEAD. Added R1/O1 acceptance criteria for cancellation races, delayed candidates, and delivery failures (#144, PR #146).
 
 - #144: Audited the current contracts across six repositories and added a responsibility design, phased migration plan, and follow-up issue proposals for review requests, progress subscriptions, execution observations, and review execution. Updated both English and Japanese architecture documents. New APIs and deployment changes are not implemented.

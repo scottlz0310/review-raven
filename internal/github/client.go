@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
@@ -971,7 +971,7 @@ func (c *Client) PostEscalationComment(ctx context.Context, owner, repo string, 
 	if pr.GetHead().GetSHA() != expectedSHA {
 		return "", "", fmt.Errorf("PR head does not match expected SHA")
 	}
-	comment, _, err := c.gh.Issues.CreateComment(ctx, owner, repo, prNumber, &github.IssueComment{Body: github.Ptr(body)})
+	comment, _, err := c.gh.Issues.CreateComment(ctx, owner, repo, prNumber, github.IssueCommentRequest{Body: body})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to post escalation comment; outcome may be unknown: %w", err)
 	}

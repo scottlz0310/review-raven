@@ -3,7 +3,6 @@ module github.com/scottlz0310/review-raven
 go 1.27.3
 
 require (
-	github.com/google/go-github/v89 v89.0.0
 	github.com/google/go-github/v93 v93.0.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
