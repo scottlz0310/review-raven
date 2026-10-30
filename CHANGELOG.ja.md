@@ -11,6 +11,8 @@
 
 ### 追加
 
+- CI ワークフロー（`lint-test.yml`）およびローカルの `pre-commit` フック（`lefthook.yml`）に `go mod tidy -diff` による検証を追加した。`go.mod` とソースコードのインポートの整合性を保証し、未使用または未追従の直接依存の混入を防止する。
+
 - 専用 GitHub App モードに `post_runner_escalation` を追加した。会話への通知が無応答のとき、OPEN PR と固定 HEAD を確認して定型コメントを投稿する。投稿失敗時の自動再試行は行わない。
 
 - 安定版の prepare・draft・イメージ生成/再取得検証・finalize を release-automate へ統一した。2言語 CHANGELOG を同時に確定し、日本語本文へ Docker・検証証跡を追記する。開発版の main イメージ配布は維持し、タグ起点の旧公開は廃止する。
