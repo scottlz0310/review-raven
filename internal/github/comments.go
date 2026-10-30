@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/shurcooL/githubv4"
 
 	"github.com/scottlz0310/review-raven/internal/reader"

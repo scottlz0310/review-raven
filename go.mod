@@ -4,7 +4,6 @@ go 1.27.3
 
 require (
 	github.com/google/go-github/v93 v93.0.0
-	github.com/google/go-github/v93 v93.0.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/shurcooL/githubv4 v0.0.0-20260209031235-2402fdf4a9ed
