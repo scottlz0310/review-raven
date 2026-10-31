@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- リリース共通workflowをrelease-automate v3.2.1へ更新し、準備時の比較元に対象版以上の旧系列タグを選ばない修正を取り込んだ。
+
 ## [0.7.0] - 2026-10-31
 
 ### Added
