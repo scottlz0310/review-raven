@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-31
+
 ### 追加
 
 - CI ワークフロー（`lint-test.yml`）およびローカルの `pre-commit` フック（`lefthook.yml`）に `go mod tidy -diff` による検証を追加した。`go.mod` とソースコードのインポートの整合性を保証し、未使用または未追従の直接依存の混入を防止する。
@@ -239,7 +241,8 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/scottlz0310/review-raven/compare/v3.2.0...v0.7.0
 [0.6.0]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0
