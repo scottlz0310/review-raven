@@ -43,6 +43,7 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `diagnose_github_token` | 現在のトークンの login と OAuth スコープ(`X-OAuth-Scopes` レスポンスヘッダー由来)を返す。`PERMISSION_DENIED` の原因切り分け用 |
 | `get_trusted_comment_authors` | PR のコメントの本文を、エージェントの文脈に入れてよい投稿者の許可リスト（サーバーの `TRUSTED_COMMENT_AUTHORS`）を返す。read-only。未設定のときは `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する |
 | `read_pr_comments` | _専用 App モードのみ。_ PR の review thread のコメント・review body・issue comment の本文を、ツール自身が全コメントの投稿者を検証した上で返す（全ページのメタデータ→許可リスト→本文の順）。許可外の投稿者、または投稿者を特定できないコメントが 1 件でもあれば、本文を一切読まずに止まり（`UNTRUSTED_COMMENT` / `AUTHOR_CHECK_FAILED`）、検証後に変わった本文は返さない（`SNAPSHOT_CHANGED`）。成功の `snapshotId` は、後の再取得との比較に使う。契約: [docs/design/contracts/reader](docs/design/contracts/reader/README.md) |
+| `post_review_cycle_comment` | 専用AppでOPEN PRの期待HEADに再依頼/対応サマリを投稿。実投稿者を返し、結果不明時は自動再試行しない。[契約](docs/review-cycle-comment.md) |
 | `post_runner_escalation` | 専用Appモードのみ。会話への通知が無応答の場合に、OPEN PRと固定HEADを確認して定型の対応依頼を投稿する。通信失敗時は自動再試行しない |
 | `request_review` | _opt-in。専用 App モードのみ。_ 期待する PR の HEAD に固定してレビューを依頼する（初回と再依頼は同じ入口）。主体と PR の範囲で冪等。購読先の `review-raven://requests/{cycleId}` を返す |
 | `get_review_request` | _opt-in。_ レビュー依頼の現在の snapshot（配送・取消・実行観測・結果参照・`terminal`）を返す |
