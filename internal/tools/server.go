@@ -179,6 +179,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	if opts.InstallationTokens != nil {
 		RegisterReadPRCommentsTool(srv, clientProvider, opts.TrustedCommentAuthors)
 		RegisterEscalationCommentTool(srv, clientProvider)
+		RegisterReviewCycleCommentTool(srv, clientProvider)
 	}
 	if requests != nil {
 		requests.SetNotifier(func(cycleID string) {

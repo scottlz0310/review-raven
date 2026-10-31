@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- 専用App用のpost_review_cycle_commentを追加した。再レビュー依頼と対応サマリに用途を限定し、OPEN PR・期待HEAD・サイクル書式を検証して実投稿者を返す。結果不明時は自動再試行しない。skillの移行・配布・実投稿確認は後続。
+
+
 ### Changed
 
 - リリース共通workflowをrelease-automate v3.2.1へ更新し、準備時の比較元に対象版以上の旧系列タグを選ばない修正を取り込んだ。
