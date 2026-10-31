@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-31
+
 ### Added
 
 - 専用App用のpost_review_cycle_commentを追加した。再レビュー依頼と対応サマリに用途を限定し、OPEN PR・期待HEAD・サイクル書式を検証して実投稿者を返す。結果不明時は自動再試行しない。skillの移行・配布・実投稿確認は後続。
@@ -250,7 +252,8 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
