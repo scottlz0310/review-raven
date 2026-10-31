@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-31
+
 ### Added
 
 - 専用App用のpost_review_cycle_commentを追加した。再レビュー依頼と対応サマリに用途を限定し、OPEN PR・期待HEAD・サイクル書式を検証して実投稿者を返す。結果不明時は自動再試行しない。skillの移行・配布・実投稿確認は後続。
@@ -250,7 +252,8 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
