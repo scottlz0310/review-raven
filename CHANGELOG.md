@@ -242,7 +242,7 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - See `docs/` for related design context and migration history.
 
 [Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/scottlz0310/review-raven/compare/v3.2.0...v0.7.0
+[0.7.0]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0

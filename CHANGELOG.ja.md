@@ -242,7 +242,7 @@
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
 [Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/scottlz0310/review-raven/compare/v3.2.0...v0.7.0
+[0.7.0]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scottlz0310/review-raven/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scottlz0310/review-raven/compare/v0.3.0...v0.4.0
