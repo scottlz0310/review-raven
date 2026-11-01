@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-01
+
 ### Removed
 
 - 廃案となった認証付き内部連携の依頼台帳・公開受付/resource・内部API・thread-owl配送workerと専用契約/設定を撤去した。App認証・投稿者検証済みreader・定型投稿と既存gatewayモードは維持する。
@@ -260,7 +262,8 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/scottlz0310/review-raven/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/scottlz0310/review-raven/compare/v0.5.0...v0.6.0
