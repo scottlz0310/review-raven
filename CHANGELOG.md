@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- PR説明本文を専用AppのMCP経由で更新するB3設計案を追加した。作成者と編集者を区別し、更新前照合・更新後確認と原子的な競合防止を保証できない制約を明記した。APIは未実装。
+
 ## [0.8.0] - 2026-10-31
 
 ### Added
