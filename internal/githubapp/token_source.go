@@ -32,11 +32,12 @@ type Config struct {
 }
 
 type TokenSource struct {
-	config Config
-	key    *rsa.PrivateKey
-	mu     sync.Mutex
-	token  string
-	expiry time.Time
+	config   Config
+	key      *rsa.PrivateKey
+	mu       sync.Mutex
+	token    string
+	expiry   time.Time
+	botLogin string
 }
 
 func NewTokenSource(cfg Config) (*TokenSource, error) {
@@ -59,8 +60,12 @@ func NewTokenSource(cfg Config) (*TokenSource, error) {
 
 // installation tokenは利用者権限と独立するため、発行前に所有先と対象範囲を照合する。
 func (s *TokenSource) ValidateInstallation(ctx context.Context) error {
+	s.mu.Lock()
+	s.botLogin = ""
+	s.mu.Unlock()
 	var app struct {
-		ID    int64 `json:"id"`
+		ID    int64  `json:"id"`
+		Slug  string `json:"slug"`
 		Owner struct {
 			Login string `json:"login"`
 			Type  string `json:"type"`
@@ -71,6 +76,9 @@ func (s *TokenSource) ValidateInstallation(ctx context.Context) error {
 	}
 	if app.ID != s.config.AppID || !strings.EqualFold(app.Owner.Login, s.config.Owner) || app.Owner.Type != "Organization" {
 		return errors.New("GitHub AppのIDまたは組織所有者が設定と一致しません")
+	}
+	if app.Slug == "" || strings.TrimSpace(app.Slug) != app.Slug || strings.ContainsAny(app.Slug, "/\\?#%[]") {
+		return errors.New("認証済みGitHub Appのslugが不正です")
 	}
 	var installation struct {
 		ID                  int64             `json:"id"`
@@ -98,7 +106,17 @@ func (s *TokenSource) ValidateInstallation(ctx context.Context) error {
 			return fmt.Errorf("GitHub Appのinstallationに%s: %s権限がありません", name, required)
 		}
 	}
+	s.mu.Lock()
+	s.botLogin = app.Slug + "[bot]"
+	s.mu.Unlock()
 	return nil
+}
+
+// BotLoginはinstallation検証に成功した認証済みAppのidentityだけを返す。
+func (s *TokenSource) BotLogin() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.botLogin
 }
 
 func requiredPermissions() map[string]string {

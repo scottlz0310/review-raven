@@ -61,6 +61,8 @@ func (h *StreamableHandler) Close() {
 type BuilderOptions struct {
 	// 専用Appモードはこのsourceを使い、Copilot系・watchを登録しない。
 	InstallationTokens InstallationTokens
+	// AppBotLoginは起動時に認証済み/appのslugから導出する。投稿者allowlistとは別。
+	AppBotLogin string
 
 	// GatewayClientFactory, if non-nil, overrides the default static-token
 	// watch ClientFactory. It is invoked per watch with the authenticated
@@ -159,6 +161,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 		RegisterReadPRCommentsTool(srv, clientProvider, opts.TrustedCommentAuthors)
 		RegisterEscalationCommentTool(srv, clientProvider)
 		RegisterReviewCycleCommentTool(srv, clientProvider)
+		RegisterPRDescriptionTools(srv, clientProvider, opts.AppBotLogin)
 	}
 
 	streamableHandler := &StreamableHandler{

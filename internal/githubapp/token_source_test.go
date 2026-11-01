@@ -149,7 +149,7 @@ func TestValidateInstallation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if r.URL.Path == "/app" {
-					return response(200, fmt.Sprintf(`{"id":%d,"owner":{"login":%q,"type":"Organization"}}`, tt.appID, tt.appOwner)), nil
+					return response(200, fmt.Sprintf(`{"id":%d,"slug":"verified-app","owner":{"login":%q,"type":"Organization"}}`, tt.appID, tt.appOwner)), nil
 				}
 				suspended := "null"
 				if tt.suspended {
@@ -163,6 +163,50 @@ func TestValidateInstallation(t *testing.T) {
 			}
 			if err := source.ValidateInstallation(context.Background()); (err != nil) != tt.wantError {
 				t.Fatalf("ValidateInstallation()=%v", err)
+			}
+			wantLogin := "verified-app[bot]"
+			if tt.wantError {
+				wantLogin = ""
+			}
+			if source.BotLogin() != wantLogin {
+				t.Fatalf("認証済みidentity=%q、期待=%q", source.BotLogin(), wantLogin)
+			}
+		})
+	}
+}
+
+func TestAppIdentityRequiresSuccessfulValidation(t *testing.T) {
+	_, keyPEM := testKey(t)
+	for _, slug := range []string{"", " verified-app", "../other", "valid-app"} {
+		t.Run("slug="+slug, func(t *testing.T) {
+			fail := false
+			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if fail {
+					return response(403, "{}"), nil
+				}
+				if r.URL.Path == "/app" {
+					return response(200, fmt.Sprintf(`{"id":1,"slug":%q,"owner":{"login":"owner","type":"Organization"}}`, slug)), nil
+				}
+				return response(200, `{"id":2,"app_id":1,"account":{"login":"owner","type":"Organization"},"repository_selection":"all","permissions":{"metadata":"read","checks":"read","pull_requests":"write","contents":"write"}}`), nil
+			})}
+			source, err := NewTokenSource(Config{AppID: 1, InstallationID: 2, Owner: "owner", PrivateKeyPEM: keyPEM, HTTPClient: client})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if source.BotLogin() != "" {
+				t.Fatal("検証前にApp名を補完しました")
+			}
+			err = source.ValidateInstallation(context.Background())
+			if slug == "valid-app" {
+				if err != nil || source.BotLogin() != "valid-app[bot]" {
+					t.Fatalf("identity=%q err=%v", source.BotLogin(), err)
+				}
+				fail = true
+				if source.ValidateInstallation(context.Background()) == nil || source.BotLogin() != "" {
+					t.Fatal("失敗後に古い検証結果を保持しました")
+				}
+			} else if err == nil || source.BotLogin() != "" {
+				t.Fatalf("不正slugを受理しました: %q", slug)
 			}
 		})
 	}

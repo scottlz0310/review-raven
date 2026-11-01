@@ -43,6 +43,8 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 | `diagnose_github_token` | Report the current token's login and OAuth scopes (from the `X-OAuth-Scopes` response header) for diagnosing `PERMISSION_DENIED` failures |
 | `get_trusted_comment_authors` | Return the allowlist of PR comment authors whose text may enter an agent's context (the server's `TRUSTED_COMMENT_AUTHORS`). Read-only; fails with `TRUSTED_AUTHORS_NOT_CONFIGURED` when unset |
 | `post_review_cycle_comment` | 専用AppでOPEN PRの期待HEADに再依頼/対応サマリを投稿。実投稿者を返し、結果不明時は自動再試行しない。[契約](docs/review-cycle-comment.md) |
+| `get_pr_description` | 専用Appモードのみ。未加工のPR本文・SHA-256・HEAD・作成者・編集者を取得する。[契約](docs/design/pr-description-update.md) |
+| `update_pr_description` | 専用Appモードのみ。OPEN・期待HEAD・本文hashを照合して本文だけを1回更新し、App編集者を読戻し検証する。空本文可。同時編集は避け、結果不明時は再試行前に利用者へ確認する |
 | `post_runner_escalation` | 専用Appモードのみ。会話への通知が無応答の場合に、OPEN PRと固定HEADを確認して定型の対応依頼を投稿する。通信失敗時は自動再試行しない |
 | `read_pr_comments` | _Dedicated App mode only._ Return the text of a PR's review thread comments, review bodies and issue comments after the tool itself has checked every comment's author (metadata of every page, then the allowlist, then the text). One comment by an author who is not allowed, or whose author is unknown, stops it without reading any text (`UNTRUSTED_COMMENT` / `AUTHOR_CHECK_FAILED`); text that changed between the check and the read is never returned (`SNAPSHOT_CHANGED`). The success carries a `snapshotId` to compare on a later read. Contract: [docs/design/contracts/reader](docs/design/contracts/reader/README.md) |
 

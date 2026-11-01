@@ -1,6 +1,6 @@
 # PR説明本文の専用App更新（B3 / 旧Q3）
 
-状態: 2026-11-01の設計案。API・skill移行・配備は未実装。本書のレビュー完了は実装・公開の完了を意味しない。
+状態: 2026-11-02にAPIを実装。モックGitHubとMCP経由で検証する。実App編集E2E・skill移行・公開・配備は未実施。利用者は同時編集を行わない運用と残余競合リスクを受容し、実装・PR・独立レビュー待機までを許可した。
 
 ## 採用案と理由
 
@@ -26,7 +26,7 @@ GitHubの本文更新APIには、期待HEADや期待本文を条件とする原�
 
 ## ツール契約案
 
-名称とschemaは実装PRで確定する。読み取りと更新は別操作とし、呼び出し側が実際に読んだ本文を条件にする。
+読み取りと更新は別操作とし、呼び出し側が実際に読んだ本文を条件にする。
 
 | 操作 | 入力 | 出力 |
 |---|---|---|
@@ -37,6 +37,8 @@ GitHubの本文更新APIには、期待HEADや期待本文を条件とする原�
 
 読取失敗・不明なidentityを空文字や既知のApp名で補わない。作成者と最終編集者のnullは区別して保持する。出力のactor値は実取得値であり、設定したApp名の転記を投稿者検証の証拠にしない。
 
+成功出力は取得した本文を含む。更新時は同じ取得メタデータにstatus（updated / unchanged）を追加する。actorはnodeId / login / type、lastEditedAtはRFC 3339形式またはnull。GraphQLのeditorをlastEditorとして返す。認証済みGET /appのslugからBot loginを導出し、更新前にRESTのBot Node IDを取得して読戻しの編集者と照合する。identity未検証なら書かない。bodyは必須であり、省略・nullは空文字と区別して拒否する。
+
 ## 更新の手順と結果
 
 1. 入力形式を検証し、既存の専用App認証で対象PRを読む。OPEN、期待HEAD、期待本文hashを全て照合する。不一致・取得失敗なら書かずに停止する。
@@ -45,7 +47,9 @@ GitHubの本文更新APIには、期待HEADや期待本文を条件とする原�
 4. 本文、HEAD、state、作成者・編集者を再取得する。OPEN・期待HEAD・要求本文の一致に加え、実際の編集者が認証済み専用Appに対応するidentityであることを確認して`updated`とする。編集者不明・不一致なら成功扱いにしない。App slugとbot loginの対応は既存のApp identity取得に基づき、任意の文字列一致にしない。
 5. PATCHの応答消失、読戻し失敗、読戻しの不一致は「変更された可能性あり」と返す。自動再試行・rollback・別認証・`gh`による代替更新を行わない。現在値を読んで利用者に状況を提示し、新しい差分に対する明示的な判断を待つ。
 
-エラーは、入力不正、認証/認可失敗、更新前競合（書込みなし）、更新結果不明、更新後不一致（変更済みの可能性あり）を区別する。更新後のエラーを「変更なし」と返さない。具体的なcodeは既存エラー体系に合わせて実装時に定義する。
+エラーは、入力不正、認証/認可失敗、更新前競合（書込みなし）、更新結果不明、更新後不一致（変更済みの可能性あり）を区別する。更新後のエラーを「変更なし」と返さない。
+
+MCPの失敗はIsError=trueで、textとstructuredContentに同じ `{"error":{"code":"…","message":"…","mayHaveChanged":false}}` を返す。入力検証は認証処理の前に行う。コードはINVALID_INPUT、READ_FAILED、APP_IDENTITY_FAILED、CLIENT_UNAVAILABLE、PRECONDITION_FAILED、UPDATE_OUTCOME_UNKNOWN、POST_UPDATE_MISMATCHと、既存のAUTH_REQUIRED / REAUTH_REQUIRED / PERMISSION_DENIED / NOT_FOUND / RATE_LIMITED / VALIDATION_ERROR / TRANSIENT_UPSTREAM_ERROR等を使う。PATCH開始後は認証エラーを含めUPDATE_OUTCOME_UNKNOWNまたはPOST_UPDATE_MISMATCHとmayHaveChanged=trueを維持し、自動再試行を促す認証エラーへ変換しない。エラーにPR本文・GitHubの応答本文は含めない。
 
 ## 残る競合と運用条件
 

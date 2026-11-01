@@ -82,6 +82,7 @@ func main() {
 			os.Exit(1)
 		}
 		builderOpts.InstallationTokens = source
+		builderOpts.AppBotLogin = source.BotLogin()
 		slog.Info("専用Appのinstallationを確認しました", "app_id", cfg.githubApp.AppID,
 			"installation_id", cfg.githubApp.InstallationID, "owner", cfg.githubApp.Owner)
 

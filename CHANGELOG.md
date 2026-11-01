@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- 専用AppモードにPR本文の取得・更新APIを追加した。OPEN・期待HEAD・未加工本文hashを照合し、本文のみ1回更新して読戻しのApp編集者をNode IDで確認する。結果不明・不一致は変更済みの可能性を返し、自動再試行しない。
+
 ## [0.9.0] - 2026-11-01
 
 ### Removed
