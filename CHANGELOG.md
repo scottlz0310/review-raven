@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-01
+
 ### Added
 
 - 専用AppモードにPR本文の取得・更新APIを追加した。OPEN・期待HEAD・未加工本文hashを照合し、本文のみ1回更新して読戻しのApp編集者をNode IDで確認する。結果不明・不一致は変更済みの可能性を返し、自動再試行しない。
@@ -266,7 +268,8 @@ If you were running with `AUTH_MODE=standalone` or `AUTH_MODE=gateway`:
 - This standalone repository preserves release continuity from the original `review-raven` service work in Mcp-Docker; git history was not migrated.
 - See `docs/` for related design context and migration history.
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/scottlz0310/review-raven/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/scottlz0310/review-raven/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/scottlz0310/review-raven/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/scottlz0310/review-raven/compare/v0.6.0...v0.7.0
