@@ -137,6 +137,15 @@ func TestUpdatePRDescription(t *testing.T) {
 		status  string
 	}{
 		{name: "更新", patches: 1, status: "updated"},
+		{name: "GraphQLのsuffixなしBot", change: func(f *descriptionAPIFixture, _ *DescriptionUpdate, _ *string) {
+			f.after["editor"] = descriptionActorFixture("Bot", "verified-app", "bot-id")
+		}, patches: 1, status: "updated"},
+		{name: "suffixなし同名別Node", change: func(f *descriptionAPIFixture, _ *DescriptionUpdate, _ *string) {
+			f.after["editor"] = descriptionActorFixture("Bot", "verified-app", "other-id")
+		}, code: "POST_UPDATE_MISMATCH", changed: true, patches: 1},
+		{name: "suffix重複は拒否", change: func(f *descriptionAPIFixture, _ *DescriptionUpdate, _ *string) {
+			f.after["editor"] = descriptionActorFixture("Bot", "verified-app[bot][bot]", "bot-id")
+		}, code: "POST_UPDATE_MISMATCH", changed: true, patches: 1},
 		{name: "空本文へ置換", change: func(f *descriptionAPIFixture, in *DescriptionUpdate, _ *string) { in.Body = ""; f.after["body"] = "" }, patches: 1, status: "updated"},
 		{name: "同一本文・編集者不明", change: func(_ *descriptionAPIFixture, in *DescriptionUpdate, _ *string) { in.Body = "old" }, status: "unchanged"},
 		{name: "CLOSED", change: func(f *descriptionAPIFixture, _ *DescriptionUpdate, _ *string) { f.before["state"] = "CLOSED" }, code: "PRECONDITION_FAILED"},

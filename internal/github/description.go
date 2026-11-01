@@ -193,9 +193,12 @@ func (c *Client) UpdatePRDescription(ctx context.Context, in DescriptionUpdate, 
 	}
 	sameAuthor := before.OriginalAuthor == nil && after.OriginalAuthor == nil ||
 		before.OriginalAuthor != nil && after.OriginalAuthor != nil && before.OriginalAuthor.NodeID == after.OriginalAuthor.NodeID
+	// GraphQLのBot loginはRESTの[bot] suffixを省く。Node ID照合は常に必須とする。
+	sameBotLogin := after.LastEditor != nil && (strings.EqualFold(after.LastEditor.Login, bot.GetLogin()) ||
+		strings.EqualFold(after.LastEditor.Login, strings.TrimSuffix(bot.GetLogin(), "[bot]")))
 	if after.State != "OPEN" || after.HeadSHA != in.ExpectedHeadSHA || after.Body != in.Body || !sameAuthor ||
 		after.LastEditor == nil || after.LastEditor.Type != "Bot" || after.LastEditor.NodeID != bot.GetNodeID() ||
-		!strings.EqualFold(after.LastEditor.Login, bot.GetLogin()) {
+		!sameBotLogin {
 		return DescriptionUpdateResult{}, descriptionError("POST_UPDATE_MISMATCH", "PATCH後の本文・HEAD・state・作成者・App編集者が一致しません。変更された可能性があるため現在値を確認してください", true, nil)
 	}
 	return DescriptionUpdateResult{PRDescription: after, Status: "updated"}, nil
