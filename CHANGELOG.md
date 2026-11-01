@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- 廃案となった認証付き内部連携の依頼台帳・公開受付/resource・内部API・thread-owl配送workerと専用契約/設定を撤去した。App認証・投稿者検証済みreader・定型投稿と既存gatewayモードは維持する。
+
 ### Documentation
 
 - PR説明本文を専用AppのMCP経由で更新するB3設計案を追加した。作成者と編集者を区別し、更新前照合・更新後確認と原子的な競合防止を保証できない制約を明記した。APIは未実装。

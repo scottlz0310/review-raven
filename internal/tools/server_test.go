@@ -355,33 +355,37 @@ func (rt bearerTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 // returns nil. That is an upstream go-sdk client-side bug, not a review-raven
 // authorization gap; asserting on the raw HTTP response is what actually
 // exercises our SubscribeHandler's security boundary.
-func TestSubscribeHandlerRejectsLegacyURIScheme(t *testing.T) {
-	db := openServerTestDB(t)
-	handler := BuildStreamableHandler(db, 30*time.Second)
-	t.Cleanup(handler.Close)
+func TestSubscribeHandlerRejectsRetiredURISchemes(t *testing.T) {
+	for _, uri := range []string{"copilot-review://watch/abc123", "review-raven://requests/cyc_01jbq3x8n5r7t9v2w4y6z8a0c1"} {
+		t.Run(uri, func(t *testing.T) {
+			db := openServerTestDB(t)
+			handler := BuildStreamableHandler(db, 30*time.Second)
+			t.Cleanup(handler.Close)
 
-	httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
-		"token-a": "alice",
-	}))
-	t.Cleanup(httpServer.Close)
+			httpServer := httptest.NewServer(withAuthContext(handler, map[string]string{
+				"token-a": "alice",
+			}))
+			t.Cleanup(httpServer.Close)
 
-	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{` +
-		testNewProtocolMeta + `,"notifications":{"resourceSubscriptions":["copilot-review://watch/abc123"]}}}`)
-	req := newProtocolRequest(t, context.Background(), httpServer.URL, "token-a", "subscriptions/listen", body)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("http.Do() error = %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
+			body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{` +
+				testNewProtocolMeta + `,"notifications":{"resourceSubscriptions":["` + uri + `"]}}}`)
+			req := newProtocolRequest(t, context.Background(), httpServer.URL, "token-a", "subscriptions/listen", body)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("http.Do() error = %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read response body error = %v", err)
-	}
-	if resp.StatusCode == http.StatusOK {
-		t.Fatalf("subscriptions/listen for legacy URI status = 200, want an error status; body=%s", respBody)
-	}
-	if !strings.Contains(string(respBody), "Resource not found") {
-		t.Fatalf("subscriptions/listen response = %q, want to contain \"Resource not found\"", respBody)
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read response body error = %v", err)
+			}
+			if resp.StatusCode == http.StatusOK {
+				t.Fatalf("subscriptions/listen for legacy URI status = 200, want an error status; body=%s", respBody)
+			}
+			if !strings.Contains(string(respBody), "Resource not found") {
+				t.Fatalf("subscriptions/listen response = %q, want to contain \"Resource not found\"", respBody)
+			}
+		})
 	}
 }
