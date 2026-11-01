@@ -6,7 +6,7 @@
 
 専用Appのinstallation権限は利用者権限と独立する。初版は個人運用を対象とし、組織`scottlz0310`の全repo（今後作成するrepoを含む）を対象とする。利用者ごとのrepo権限チェックは提供しない。review-ravenを外部公開せず、gatewayと同じ内部ネットワークへ置く。
 
-起動時にApp JWTで`GET /app`・`GET /app/installations/<id>`を呼び、App ID、Appの組織所有者、installation ID・App ID、対象組織、全repoへのインストール、停止状態、必要権限を照合する。不一致やAPIエラーは起動失敗とする。権限の変更後はサービスを再起動して照合する。
+起動時にApp JWTで`GET /app`・`GET /app/installations/<id>`を呼び、App ID、Appのslug・組織所有者、installation ID・App ID、対象組織、全repoへのインストール、停止状態、必要権限を照合する。不一致やAPIエラーは起動失敗とする。認証済みslugに基づくBot loginをPR本文更新の編集者照合に使い、投稿者allowlistは流用しない。権限の変更後はサービスを再起動して照合する。
 
 ## 設定
 
@@ -40,6 +40,8 @@ installation tokenをメモリで共有し、有効期限の5分前から次のt
 - `list_check_runs_for_sha`
 - `get_trusted_comment_authors`
 - `read_pr_comments`
+- `get_pr_description`（PR説明の未加工本文・HEAD・hash・作成者・編集者を取得する）
+- `update_pr_description`（OPEN・期待HEAD・本文hashを照合し本文だけを1回更新、読戻しでApp編集者を確認する。[制約とエラー契約](design/pr-description-update.md)）
 - `post_review_cycle_comment`（再依頼/対応サマリに限定したOPEN PRへの投稿。契約は[専用API](review-cycle-comment.md)）
 - `post_runner_escalation`（会話への通知も無応答の場合に、OPEN PR と固定 HEAD を確認して定型コメントを投稿する）
 

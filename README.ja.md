@@ -44,6 +44,8 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `get_trusted_comment_authors` | PR のコメントの本文を、エージェントの文脈に入れてよい投稿者の許可リスト（サーバーの `TRUSTED_COMMENT_AUTHORS`）を返す。read-only。未設定のときは `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する |
 | `read_pr_comments` | _専用 App モードのみ。_ PR の review thread のコメント・review body・issue comment の本文を、ツール自身が全コメントの投稿者を検証した上で返す（全ページのメタデータ→許可リスト→本文の順）。許可外の投稿者、または投稿者を特定できないコメントが 1 件でもあれば、本文を一切読まずに止まり（`UNTRUSTED_COMMENT` / `AUTHOR_CHECK_FAILED`）、検証後に変わった本文は返さない（`SNAPSHOT_CHANGED`）。成功の `snapshotId` は、後の再取得との比較に使う。契約: [docs/design/contracts/reader](docs/design/contracts/reader/README.md) |
 | `post_review_cycle_comment` | 専用AppでOPEN PRの期待HEADに再依頼/対応サマリを投稿。実投稿者を返し、結果不明時は自動再試行しない。[契約](docs/review-cycle-comment.md) |
+| `get_pr_description` | 専用Appモードのみ。未加工のPR本文・SHA-256・HEAD・作成者・編集者を取得する。[契約](docs/design/pr-description-update.md) |
+| `update_pr_description` | 専用Appモードのみ。OPEN・期待HEAD・本文hashを照合して本文だけを1回更新し、App編集者を読戻し検証する。空本文可。同時編集は避け、結果不明時は再試行前に利用者へ確認する |
 | `post_runner_escalation` | 専用Appモードのみ。会話への通知が無応答の場合に、OPEN PRと固定HEADを確認して定型の対応依頼を投稿する。通信失敗時は自動再試行しない |
 
 `get_review_threads` は任意の `include_bodies` input を受け付けます。後方互換性のため省略時は `true` です。`false` を指定すると、GitHub からレビュースレッド本文を選択しないメタデータのみの射影を返します。レスポンスにはコメント ID、投稿者メタデータ、URL、スレッドの解決状態、ページネーション完了情報が含まれます。
