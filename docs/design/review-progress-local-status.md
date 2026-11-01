@@ -1,6 +1,8 @@
 # レビュー状態の共有と進捗観測の見直し（#144 の改訂案）
 
-状態: 設計案。2026-10-25。実装・配備・廃止は未実施。利用者の方針（本文の「利用者の方針」）に基づく案で、確定していない部分は「未確認・決めること」に分けた。
+状態: 2026-11-01に内部連携の廃案・撤去を利用者が決定。以下は2026-10-25時点の比較・調査履歴であり、未決・凍結の記述を現在の予定として扱わない。現行方針は[責務と廃止](review-responsibility-boundaries.md)。
+
+当時の状態: 設計案。2026-10-25。実装・配備・廃止は未実施。利用者の方針（本文の「利用者の方針」）に基づく案で、確定していない部分は「未確認・決めること」に分けた。
 対象: [review-raven#144](https://github.com/scottlz0310/review-raven/issues/144)、[squirrel-notifier#497](https://github.com/scottlz0310/squirrel-notifier/issues/497)。
 関連: [review-responsibility-boundaries.md](review-responsibility-boundaries.md)（本書が見直す、内部連携を含む責務設計）。
 

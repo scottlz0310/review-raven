@@ -45,9 +45,6 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `read_pr_comments` | _専用 App モードのみ。_ PR の review thread のコメント・review body・issue comment の本文を、ツール自身が全コメントの投稿者を検証した上で返す（全ページのメタデータ→許可リスト→本文の順）。許可外の投稿者、または投稿者を特定できないコメントが 1 件でもあれば、本文を一切読まずに止まり（`UNTRUSTED_COMMENT` / `AUTHOR_CHECK_FAILED`）、検証後に変わった本文は返さない（`SNAPSHOT_CHANGED`）。成功の `snapshotId` は、後の再取得との比較に使う。契約: [docs/design/contracts/reader](docs/design/contracts/reader/README.md) |
 | `post_review_cycle_comment` | 専用AppでOPEN PRの期待HEADに再依頼/対応サマリを投稿。実投稿者を返し、結果不明時は自動再試行しない。[契約](docs/review-cycle-comment.md) |
 | `post_runner_escalation` | 専用Appモードのみ。会話への通知が無応答の場合に、OPEN PRと固定HEADを確認して定型の対応依頼を投稿する。通信失敗時は自動再試行しない |
-| `request_review` | _opt-in。専用 App モードのみ。_ 期待する PR の HEAD に固定してレビューを依頼する（初回と再依頼は同じ入口）。主体と PR の範囲で冪等。購読先の `review-raven://requests/{cycleId}` を返す |
-| `get_review_request` | _opt-in。_ レビュー依頼の現在の snapshot（配送・取消・実行観測・結果参照・`terminal`）を返す |
-| `cancel_review_request` | _opt-in。_ 結果なしで失敗した依頼を明示的に取り消し、同じ HEAD を新しい round で依頼し直せるようにする |
 
 `get_review_threads` は任意の `include_bodies` input を受け付けます。後方互換性のため省略時は `true` です。`false` を指定すると、GitHub からレビュースレッド本文を選択しないメタデータのみの射影を返します。レスポンスにはコメント ID、投稿者メタデータ、URL、スレッドの解決状態、ページネーション完了情報が含まれます。
 
@@ -94,15 +91,6 @@ mcp-gateway で、**gateway から到達可能**なこのサーバーの内部�
 | `SQLITE_PATH` | | `/data/review-raven.db` | watch state DB のパス |
 | `IN_PROGRESS_THRESHOLD_SEC` | | `30` | review request から in-progress とみなすまでの猶予（秒） |
 | `TRUSTED_COMMENT_AUTHORS` | | _(未設定)_ | PR のコメントの本文を、エージェントの文脈に入れてよい GitHub の login（カンマ区切り。`name` でも `name[bot]` でもよい。大文字小文字は区別しない）。`get_trusted_comment_authors` が公開する。不正な要素（ワイルドカードなど）があると、起動を止める。未設定のときは、ツールが `TRUSTED_AUTHORS_NOT_CONFIGURED` で失敗する（fail-closed） |
-| `REVIEW_RAVEN_REVIEW_REQUESTS` | | `false` | `true` でレビュー依頼の tool と `review-raven://requests/{cycleId}` resource を公開する。専用 GitHub App モード（呼び出し主体を proxy で検証できること）と `REVIEW_RAVEN_REQUEST_ACL` が必須で、満たさなければ起動を止める。無効のときは既存の公開面を変えない |
-| `REVIEW_RAVEN_REQUEST_ACL` | | _(未設定)_ | レビュー依頼の tool のアクセスリスト（JSON）。例: `{"users":{"your-login":["your-org/*"]},"operators":["your-login"]}`。`users` は GitHub の login が依頼・読取でき、自分の依頼を取り消せる repo（`owner/repo` または `owner/*`）、`operators`（`users` の部分集合）は他の主体の依頼も取り消せる。cycleId を知っていることや App の広い installation 権限だけでは許可しない。不正または空の設定は起動を止める |
-| `REVIEW_RAVEN_INTERNAL_SURFACE` | | `false` | `true` で、thread-owl と Squirrel 向けの内部面（サービス間）を、別パス `/internal/mcp` の別の MCP サーバーとして公開する。`ingest_review_candidate`・`publish_review_result`・`publish_review_observation` は agent 向けの tool 一覧に現れない。`REVIEW_RAVEN_REVIEW_REQUESTS=true`・`REVIEW_RAVEN_SERVICE_ACL`・`REVIEW_RAVEN_INTERNAL_PROXY_SECRET` が必須で、満たさなければ起動を止める |
-| `REVIEW_RAVEN_INTERNAL_PROXY_SECRET` | | _(未設定)_ | gateway が内部面のルートで提示する共有シークレット（32 文字以上）。`REVIEW_RAVEN_PROXY_SECRET` と異なる値にする（公開面のシークレットを持つ呼び出し元が内部面に到達できないようにするため） |
-| `REVIEW_RAVEN_SERVICE_ACL` | | _(未設定)_ | 内部面のアクセスリスト（JSON）。例: `{"services":{"svc-owl":{"actions":["ingest","publish_result"],"repos":["your-org/*"]},"svc-squirrel":{"actions":["observe"],"repos":["your-org/*"],"producers":["squirrel-notifier"]}}}`。サービス主体ごとに、呼べる操作（`ingest`・`publish_result`・`observe`）と、作用できる repo（`owner/repo` または `owner/*`）を指定する。`observe` を持つサービスは、送信できる `producers` も指定する。同じ名前を利用者（`REVIEW_RAVEN_REQUEST_ACL`）とサービスの両方に置けない。不正または空の設定は起動を止める |
-| `REVIEW_RAVEN_OWL_INTERNAL_URL` | | _(未設定)_ | thread-owl の内部面の MCP エンドポイント（通常は gateway のルート）。キューに載った候補と取消を thread-owl へ送る配送 worker を起動する。https、または loopback ホストの http のみ。`REVIEW_RAVEN_OWL_INTERNAL_TOKEN` と同時に指定し、`REVIEW_RAVEN_REVIEW_REQUESTS=true` が必須。片方だけの設定や平文での配送は起動を止める |
-| `REVIEW_RAVEN_OWL_INTERNAL_TOKEN` | | _(未設定)_ | thread-owl へ Bearer で提示するサービス資格情報（gateway がサービス主体へ対応付ける）。ログには出さない |
-| `REVIEW_RAVEN_OWL_INTERNAL_ALLOW_PLAIN_HTTP` | | `false` | `true` にすると、`REVIEW_RAVEN_OWL_INTERNAL_URL` に loopback 以外のホストの平文 http を使える。gateway をサービス名（例: `http://mcp-gateway:8080/mcp/thread-owl-internal`）で引く**コンテナの private network** 向けの opt-in で、資格情報はそのネットワーク上を平文で流れる。緩めるのは「別ホストへの http」の規則だけで、URL に資格情報・query・fragment を含めること、他のスキームは引き続き拒否する。`true`/`false` 以外の値は起動を止める |
-| `REVIEW_RAVEN_DELIVERY_INTERVAL_SEC` | | `5` | 配送 worker が期限の来たメッセージを探す間隔（1〜3600 秒） |
 
 **非対応**（旧 `copilot-review-mcp` 系統で削除済み）: `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、`BASE_URL`、`GITHUB_OAUTH_SCOPES`、`SESSION_TTL_MIN`、`TOKEN_CACHE_TTL_MIN`、`TOKEN_EXPIRES_IN_SEC`、`AUTH_MODE`。
 

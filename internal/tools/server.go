@@ -13,7 +13,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/scottlz0310/review-raven/internal/middleware"
-	"github.com/scottlz0310/review-raven/internal/reviewrequest"
 	"github.com/scottlz0310/review-raven/internal/store"
 	"github.com/scottlz0310/review-raven/internal/watch"
 )
@@ -73,13 +72,6 @@ type BuilderOptions struct {
 	// (the TRUSTED_COMMENT_AUTHORS environment variable). It is published by
 	// get_trusted_comment_authors; an empty list makes that tool fail closed.
 	TrustedCommentAuthors []string
-
-	// ReviewRequests, if non-nil, publishes request_review / get_review_request /
-	// cancel_review_request and the review-raven://requests/{cycleId} resource.
-	// It is honoured only in the dedicated GitHub App mode (InstallationTokens
-	// set), where the caller identity is proxy-verified; in any other mode it is
-	// ignored. It is opt-in: the existing tool surface does not change when unset.
-	ReviewRequests *reviewrequest.Service
 }
 
 // BuildStreamableHandler returns a handler that serves MCP over Streamable HTTP
@@ -100,15 +92,6 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	}
 	// Appモードではwatchを開始せず、過去のwatch URIへの購読も拒否する。
 	var watchManager *watch.Manager
-	// 依頼 tool / resource は、identity を proxy 検証できる専用Appモードだけで公開する。
-	var requests *reviewrequest.Service
-	if opts.ReviewRequests != nil {
-		if opts.InstallationTokens != nil {
-			requests = opts.ReviewRequests
-		} else {
-			slog.Error("review request tools require the dedicated GitHub App mode; they are not published")
-		}
-	}
 	srv := mcp.NewServer(
 		&mcp.Implementation{Name: "review-raven", Version: "0.6.0"},
 		&mcp.ServerOptions{
@@ -118,10 +101,6 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 					return nil
 				}
 				uri := req.Params.URI
-				// 依頼の購読は read と同じ認可を通す。watch の有無とは独立に判定する。
-				if strings.HasPrefix(uri, requestsResourcePrefix) {
-					return authorizeRequestSubscription(ctx, requests, uri)
-				}
 				if watchManager == nil {
 					return mcp.ResourceNotFoundError(uri)
 				}
@@ -131,7 +110,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 					return mcp.ResourceNotFoundError(uri) // legacy scheme removed in #66
 				}
 				if !strings.HasPrefix(uri, watchPrefix) {
-					return nil // not a watch URI; allow subscription for other resource types
+					return mcp.ResourceNotFoundError(uri)
 				}
 				// URI has the watch prefix — parse it strictly so malformed URIs are rejected.
 				watchID, err := parseWatchIDFromURI(uri)
@@ -180,16 +159,6 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 		RegisterReadPRCommentsTool(srv, clientProvider, opts.TrustedCommentAuthors)
 		RegisterEscalationCommentTool(srv, clientProvider)
 		RegisterReviewCycleCommentTool(srv, clientProvider)
-	}
-	if requests != nil {
-		requests.SetNotifier(func(cycleID string) {
-			uri := reviewrequest.ResourceURI(cycleID)
-			if err := srv.ResourceUpdated(context.Background(), &mcp.ResourceUpdatedNotificationParams{URI: uri}); err != nil {
-				slog.Warn("resource updated notification failed", "uri", uri, "err", err)
-			}
-		})
-		RegisterReviewRequestTools(srv, requests)
-		RegisterReviewRequestResource(srv, requests)
 	}
 
 	streamableHandler := &StreamableHandler{

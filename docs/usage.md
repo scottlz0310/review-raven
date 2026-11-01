@@ -91,52 +91,6 @@ IN_PROGRESS_THRESHOLD_SEC=30
 TRUSTED_COMMENT_AUTHORS=your-login,thread-owl,codecov
 ```
 
-### Review requests (opt-in)
-
-`request_review`, `get_review_request`, `cancel_review_request` and the `review-raven://requests/{cycleId}` resource are published only when both settings below are present **and** the server runs in the dedicated GitHub App mode. Enabling them without the App mode or without an access list stops startup; the existing tool surface does not change otherwise.
-
-```env
-REVIEW_RAVEN_REVIEW_REQUESTS=true
-REVIEW_RAVEN_REQUEST_ACL={"users":{"your-login":["your-org/*"]},"operators":["your-login"]}
-```
-
-- `users` lists the repositories (`owner/repo`, or `owner/*`) a login may request and read. A principal may cancel its own requests; `operators` may also cancel other principals' requests.
-- Every input carries the contract version `schemaVersion: 1` (required; any other value is `INVALID_ARGUMENT`).
-- A request is bound to `expectedHeadSha`; a different current head is `HEAD_CONFLICT`. The same `idempotencyKey` and payload return the same cycle. `dispatch: pending` means "not delivered yet", not "queued".
-- Subscribe to the returned `resourceUri` for progress. `terminal` becomes true only for a result reference, `superseded` or `cancelled` (see `terminalReason`); a process exit or a delivery failure alone never makes it terminal.
-- Failures are returned as the contract error envelope (`code`, `retryable`). Authorization failures are never bypassed automatically, and a pull request outside the installation is reported as `PERMISSION_DENIED`.
-- The wire contract is in [docs/design/contracts](design/contracts/README.md). Delivery to the reviewer side and execution observations are not part of this change yet: a request stays `dispatch: pending`.
-
-### Internal surface for thread-owl and Squirrel (opt-in)
-
-The reviewer side reports back over a **separate MCP server** on `/internal/mcp`. Its tools (`ingest_review_candidate`, `publish_review_result`, `publish_review_observation`) never appear in the agent-facing tool list, and the route has its own proxy secret.
-
-```env
-REVIEW_RAVEN_INTERNAL_SURFACE=true
-REVIEW_RAVEN_INTERNAL_PROXY_SECRET=<32+ characters, different from REVIEW_RAVEN_PROXY_SECRET>
-REVIEW_RAVEN_SERVICE_ACL={"services":{"svc-owl":{"actions":["ingest","publish_result"],"repos":["your-org/*"]},"svc-squirrel":{"actions":["observe"],"repos":["your-org/*"],"producers":["squirrel-notifier"]}}}
-```
-
-- Requires the review-request tools (`REVIEW_RAVEN_REVIEW_REQUESTS=true`). Startup fails when the ledger, the ACL, the secret, or a secret different from the public one is missing.
-- Authorization is per service principal, operation and repository. A service may call only the operations listed for it; a service that may `observe` may publish only as one of its listed `producers`. A name cannot appear both as a user and as a service, and a user of the public surface cannot call the internal tools.
-- `publish_review_result` stores only a reference to the reviewer's GitHub post. Results for a cycle that was superseded are kept on the old cycle; a result for a cancelled cycle is `CANDIDATE_CANCELLED`; a late delivery for a request removed after its retention is `DELIVERY_EXPIRED`.
-- Observations are accepted only for the candidate the request was dispatched to, and are ordered by `producerEpoch` and `sequence`. Delivery of candidates from raven to thread-owl (the outbox worker) is a separate change: until then a request stays `dispatch: pending` and observations are rejected with `PRODUCER_NOT_ASSIGNED`.
-
-### Delivery to thread-owl (opt-in)
-
-Queued candidates and cancellations are sent to thread-owl by a worker inside this process, over thread-owl's own internal MCP surface (`accept_review_candidate`, `cancel_review_candidate`).
-
-```env
-REVIEW_RAVEN_OWL_INTERNAL_URL=https://gateway.example/mcp/thread-owl-internal
-REVIEW_RAVEN_OWL_INTERNAL_TOKEN=<service credential issued for review-raven>
-# REVIEW_RAVEN_DELIVERY_INTERVAL_SEC=5
-```
-
-- Set the URL and the credential together; they require the review-request ledger. The URL must be https (http only on a loopback host); anything else stops startup. Inside a private container network the gateway is reached by its service name over http: set `REVIEW_RAVEN_OWL_INTERNAL_ALLOW_PLAIN_HTTP=true` to allow that explicitly (the credential then crosses the network in clear text; credentials, a query or a fragment in the URL are still refused).
-- Delivery is at-least-once and retried with an exponential, jittered backoff up to the attempt limit (8 by default); then the request is `dispatch: failed` (`UNAVAILABLE`). A refused credential (HTTP 401/403) or a rejected request is final and published as the cause (`PERMISSION_DENIED` / `INVALID_ARGUMENT`) — it is not retried or sent through another route. An error answered by thread-owl keeps its contract code.
-- A cancellation is confirmed only by thread-owl's acknowledgement. `CANCEL_RESULT_POSTED` withdraws it, and `CANCEL_UNCONFIRMED` is retried with the same cancel id, as is an acknowledgement whose `githubWriteReconciled` is not true. Redirects are never followed. Repeating the same `idempotencyKey` of `cancel_review_request` resumes a cancellation whose delivery has ended; while a retry series is alive it changes nothing.
-- The credential is issued, rotated and revoked by the deployment (Mcp-Docker), not by this server. It is sent only as a Bearer token and is never written to logs or error messages.
-
 ### Check health
 
 ```bash
