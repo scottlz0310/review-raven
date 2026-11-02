@@ -38,6 +38,7 @@ type commentsServer struct {
 	reviewPages  []map[string]any
 	issuePages   []map[string]any
 	headForQuery func(kind string, call int) string
+	refsForQuery func(kind string, call int) map[string]any
 	calls        map[string]int
 }
 
@@ -95,7 +96,11 @@ func (s *commentsServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.headForQuery != nil {
 		head = s.headForQuery(kind, call)
 	}
-	refs := map[string]any{"headRefOid": head, "baseRefOid": baseA}
+	refs := map[string]any{"headRefOid": head, "baseRefOid": baseA, "baseRefName": "main",
+		"baseRef": map[string]any{"name": "main", "prefix": "refs/heads/", "target": map[string]any{"__typename": "Commit", "oid": strings.Repeat("4", 40)}}}
+	if s.refsForQuery != nil {
+		maps.Copy(refs, s.refsForQuery(kind, call))
+	}
 
 	var data any
 	switch kind {
@@ -271,6 +276,86 @@ func TestCommentSnapshotReportsAMovedPullRequest(t *testing.T) {
 	_, err := newCommentsClient(t, s).CommentSnapshot(context.Background(), "o", "r", 1, false)
 	if !errors.Is(err, reader.ErrSnapshotMoved) {
 		t.Fatalf("error = %v, want ErrSnapshotMoved", err)
+	}
+}
+
+func policyRef(name, prefix, kind, sha string) map[string]any {
+	return map[string]any{"name": name, "prefix": prefix, "target": map[string]any{"__typename": kind, "oid": sha}}
+}
+
+func TestCommentSnapshotReadsCurrentBaseBranch(t *testing.T) {
+	s := fullServer(t)
+	policySHA := strings.Repeat("5", 40)
+	s.refsForQuery = func(string, int) map[string]any {
+		return map[string]any{"baseRefName": "release/next", "baseRef": policyRef("release/next", "refs/heads/", "Commit", policySHA)}
+	}
+	snap, err := newCommentsClient(t, s).CommentSnapshot(context.Background(), "o", "r", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.BaseSHA != baseA || snap.BaseRefName != "release/next" || snap.PolicyBaseSHA != policySHA {
+		t.Fatalf("比較元と宣言元が分離されていない: %+v", snap)
+	}
+	for _, req := range s.requests {
+		if strings.Contains(req.Query, "node(id") {
+			continue
+		}
+		for _, field := range []string{"baseRefName", "baseRef{name,prefix,target{__typename,oid}}"} {
+			if !strings.Contains(req.Query, field) {
+				t.Fatalf("queryに宣言元が含まれない: %s", req.Query)
+			}
+		}
+	}
+}
+
+func TestCommentSnapshotRejectsUnavailablePolicyRef(t *testing.T) {
+	sha := strings.Repeat("4", 40)
+	for _, tc := range []struct {
+		name string
+		refs map[string]any
+	}{
+		{"削除済みbranch", map[string]any{"baseRef": nil}},
+		{"branch名なし", map[string]any{"baseRefName": ""}},
+		{"branch名不一致", map[string]any{"baseRef": policyRef("other", "refs/heads/", "Commit", sha)}},
+		{"tag参照", map[string]any{"baseRef": policyRef("main", "refs/tags/", "Commit", sha)}},
+		{"Commit以外", map[string]any{"baseRef": policyRef("main", "refs/heads/", "Tag", sha)}},
+		{"先頭SHAなし", map[string]any{"baseRef": policyRef("main", "refs/heads/", "Commit", "")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := fullServer(t)
+			s.refsForQuery = func(string, int) map[string]any { return tc.refs }
+			_, err := newCommentsClient(t, s).CommentSnapshot(context.Background(), "o", "r", 1, false)
+			if !errors.Is(err, reader.ErrPolicyRefUnavailable) {
+				t.Fatalf("error = %v, want ErrPolicyRefUnavailable", err)
+			}
+			if len(s.requests) != 1 || s.requests[0].Variables["withBody"] != false {
+				t.Fatalf("宣言元の失敗後に取得を続けた: %+v", s.requests)
+			}
+		})
+	}
+}
+
+func TestCommentSnapshotDetectsPolicyChangesAcrossPages(t *testing.T) {
+	for _, changeAt := range []string{"threads", "reviews", "issues"} {
+		for _, changeBranch := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/branch=%v", changeAt, changeBranch), func(t *testing.T) {
+				s := fullServer(t)
+				s.refsForQuery = func(kind string, call int) map[string]any {
+					if kind != changeAt || kind == "threads" && call == 0 {
+						return nil
+					}
+					name, sha := "main", strings.Repeat("5", 40)
+					if changeBranch {
+						name, sha = "release/next", strings.Repeat("4", 40)
+					}
+					return map[string]any{"baseRefName": name, "baseRef": policyRef(name, "refs/heads/", "Commit", sha)}
+				}
+				_, err := newCommentsClient(t, s).CommentSnapshot(context.Background(), "o", "r", 1, false)
+				if !errors.Is(err, reader.ErrSnapshotMoved) {
+					t.Fatalf("error = %v, want ErrSnapshotMoved", err)
+				}
+			})
+		}
 	}
 }
 

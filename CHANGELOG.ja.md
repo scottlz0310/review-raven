@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### 修正
+
+- 投稿者検証済みreaderの許可リストを、PR比較元SHAではなく現在のbase branch先頭から取得する。契約v2でbaseRefName/policyBaseShaを必須化し、参照消失は停止、ページング・本文取得中の変更は最大3試行で再検証する。両readerとskillの対応版での移行が必要。
+
 ## [0.10.0] - 2026-11-01
 
 ### 修正

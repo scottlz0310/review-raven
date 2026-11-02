@@ -48,6 +48,8 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 | `update_pr_description` | 専用Appモードのみ。OPEN・期待HEAD・本文hashを照合して本文だけを1回更新し、App編集者を読戻し検証する。空本文可。同時編集は避け、結果不明時は再試行前に利用者へ確認する |
 | `post_runner_escalation` | 専用Appモードのみ。会話への通知が無応答の場合に、OPEN PRと固定HEADを確認して定型の対応依頼を投稿する。通信失敗時は自動再試行しない |
 
+reader契約v2は`baseSha`（PR比較元）と`baseRefName` / `policyBaseSha`（現在のbase branchの宣言元）を分離する。宣言元を確認できなければ`POLICY_REF_UNAVAILABLE`で停止し、取得中の参照変動は再検証する。旧schemaへの代替は行わず、thread-owlと両skillも対応版へ揃えて公開・配備する。
+
 `get_review_threads` は任意の `include_bodies` input を受け付けます。後方互換性のため省略時は `true` です。`false` を指定すると、GitHub からレビュースレッド本文を選択しないメタデータのみの射影を返します。レスポンスにはコメント ID、投稿者メタデータ、URL、スレッドの解決状態、ページネーション完了情報が含まれます。
 
 `list_check_runs_for_sha` は `owner`・`repo`・`sha` を受け取ります。`sha` は 40 桁の小文字 16 進数のコミット SHA に限り、呼び出しの間に対象が動かないよう PR 番号や branch 名は受け付けません。全ページを取得して各 run の `head_sha`・`status`・`conclusion`・`app`・`html_url` を返すため、呼び出し元は CI 結果が固定したコミットのものか照合できます。再実行 run は (app ID, name) ごとに ID が最大の run に集約し、`deduplication` にその方式と重複排除前の件数を示します。合否判定は行いません。

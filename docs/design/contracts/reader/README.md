@@ -1,74 +1,73 @@
-# reviewed 側 reader の契約 v1（#144 B1 / review-raven#148・thread-owl#280 共通）
+# reviewed 側 reader の契約 v2（Mcp-Docker#408 / review-raven・thread-owl 共通）
 
-状態: 契約（schemaVersion 1）。review-raven は `internal/reader`、thread-owl は同じ契約の TypeScript 実装で満たす。
-根拠: [責務設計](../../review-responsibility-boundaries.md)（reader の信頼境界）、[後続Issue案](../../review-responsibility-followups.md) の B1。
+状態: 契約（schemaVersion 2）。review-ravenの`internal/reader`とthread-owlのTypeScript実装で共有する。契約の更新と公開・配備状況は区別する。
+根拠: [責務設計](../../review-responsibility-boundaries.md)、[後続Issue案](../../review-responsibility-followups.md)のB1。
 
-PR のコメント（review thread・review body・issue comment）は、他者が書き得る未信頼のデータである。これまではスキルが「本文なしの metadata → 投稿者検証 → 本文」の順を守っていたが、`get_review_threads` の `include_bodies=false` は任意で、守るかどうかは呼び出し側に委ねられていた。この契約は、**順序をツール側で強制する reader** を定める。
+PRのreview thread・review body・issue commentは未信頼データである。全ページの投稿者メタデータ取得→投稿者検証→本文取得の順序を、呼出し側の任意手順ではなくreader自身で強制する。
 
 ## 不変条件
 
-1. 本文は、**全種類・全ページ・resolved を含む全コメント**の投稿者メタデータを取得し、投稿者を検証した後にだけ要求する。検証に失敗した試行は、本文を一切要求しない。
-2. 検証は、サーバーの canonical allowlist（`TRUSTED_COMMENT_AUTHORS`）と、PR の **base ref** にあるプロジェクト allowlist（`.review-raven/trusted-comment-authors.json`）の和集合に対して、正規化後の login の完全一致で行う。PR の head や作業ツリーは参照しない。
-   - 正規化: ASCII の大文字を小文字にし、末尾の `[bot]` を**1 回だけ**除く。空白の trim・途中の置換・複数回の除去はしない。
-   - 投稿者が特定できない（null・空）コメントが 1 件でもあれば、許可外とは区別して止める（`AUTHOR_CHECK_FAILED`）。
-   - サーバーの allowlist が空なら誰も信頼せず、GitHub へも問い合わせずに止める（`TRUSTED_AUTHORS_NOT_CONFIGURED`）。
-   - プロジェクト allowlist が存在して壊れていれば、「追加なし」とは読まずに止める（`PROJECT_ALLOWLIST_INVALID`）。存在しない（404）ときだけ追加なし。
-3. 本文を取得したら、検証した metadata と**同じコメント**であることを確かめてから返す。コメントの集合・各コメントの投稿者と種別・`editedAt`（最後の編集時刻）・PR の head / base が 1 つでも違えば、その snapshot は返さず、最初から取り直す。取り直しは最大 3 回で、3 回続けて変わり続けたら `SNAPSHOT_CHANGED`（retryable）で止める。thread の resolved の変化は、投稿者も本文も変えないので、取り直しの理由にしない。
-4. 失敗の応答にコメント本文を含めない。`details.comments` は、止めたコメントの種別・ID・thread ID・投稿者・URL だけ。
-5. 成功の応答の `snapshotId` は、検証した snapshot の識別子である。後で再取得して値が変われば、その間にコメント・投稿者・編集・head のいずれかが変わっている（修正後の再取得で、新しい指摘や未許可の投稿を検出するために使う）。値は snapshot の指紋（下記）の SHA-256 で、コメント本文は含めない（本文の変更は `editedAt` で追う）。
+1. resolvedを含む全種類・全ページの投稿者を確認するまで、本文を要求しない。検証に失敗した試行は本文を要求しない。
+2. 許可リストはサーバーのcanonical allowlist（`TRUSTED_COMMENT_AUTHORS`）と、PRの**現在のbase branch先頭**の`.review-raven/trusted-comment-authors.json`の和集合。PR比較元SHA・head・既定branch・作業ツリーには代替しない。
+   - GitHubのPRから`baseRefName`と`baseRef`を取得する。参照名一致、prefix=`refs/heads/`、target種別=`Commit`を確認し、その40桁小文字SHAを`policyBaseSha`として宣言を読む。
+   - branch削除・名前不一致・Commit以外・SHA不明は`POLICY_REF_UNAVAILABLE`で停止する。認証・権限・通信エラーも宣言なしとして扱わない。
+   - loginはASCII小文字化し、末尾の`[bot]`を1回だけ除く。trimや部分一致はしない。
+   - 投稿者null/空は`AUTHOR_CHECK_FAILED`、許可外は`UNTRUSTED_COMMENT`。サーバーallowlistが空ならGitHubにも問い合わせず`TRUSTED_AUTHORS_NOT_CONFIGURED`。
+   - 宣言ファイルが存在して不正なら`PROJECT_ALLOWLIST_INVALID`。ファイル取得の404だけを追加なしとする。
+3. 本文取得後、コメント集合・投稿者・種別・`editedAt`・PRのhead/base・`baseRefName`・`policyBaseSha`がmetadataと一致した場合だけ返す。ページ取得中の参照変動やmetadata→本文間の変動は、宣言取得と投稿者検証から取り直す。試行は最大3回。変動が続けば`SNAPSHOT_CHANGED`（retryable）で停止する。threadのresolved状態だけの変化は再試行しない。
+4. 失敗応答に本文を含めない。`details.comments`は種別・ID・thread ID・投稿者・URLだけ。
+5. 成功の`snapshotId`は、検証したコメントと宣言元の指紋。本文自体は含めず、編集は`editedAt`で追う。
 
-## snapshot の指紋と `snapshotId`
+## 参照情報と移行
 
-次の行を文字列として**並べ替えて**（先頭の 2 行は固定、残りは辞書順）`\n` で連結し、SHA-256 の 16 進（小文字 64 桁）にする。
+| 成功応答の必須項目 | 意味 |
+|---|---|
+| `baseSha` | PR比較元snapshot（GitHubの`baseRefOid`）。従来の意味を維持 |
+| `baseRefName` | PRが現在対象にしているbase branch名 |
+| `policyBaseSha` | そのbranchの現在のCommit target。プロジェクトallowlistの取得元 |
+
+CI方針も読むconsumerは同じbase branchを解決し、readerの`baseRefName` / `policyBaseSha`と一致することを確認する。v1やprovenance欠落時に旧SHAへ代替しない。旧consumerもv2を検出したら停止する。両readerと両skillを整合させた版で公開・配備し、移行中の不一致は成功扱いにしない。v1実行時互換処理は持たない。
+
+## snapshotの指紋とsnapshotId
+
+先頭4行は固定し、コメント行だけ辞書順に並べ、`\n`で連結する。末尾改行なしのUTF-8バイト列のSHA-256を小文字16進64桁にする。
 
 ```text
 head=<headSha>
 base=<baseSha>
-<kind>|<id>|<threadId>|<author>|<authorType>|<editedAt>   ← コメント 1 件ごと
+baseRef=<baseRefName>
+policy=<policyBaseSha>
+<kind>|<id>|<threadId>|<author>|<authorType>|<editedAt>
 ```
 
-`kind` は `review_thread_comment` / `review_body` / `issue_comment`、`threadId` は thread のコメントだけ（他は空）、`editedAt` は編集されていなければ空文字。
+`kind`は`review_thread_comment` / `review_body` / `issue_comment`。thread以外の`threadId`、未編集の`editedAt`は空文字。
 
-## ツール
+## ツールとファイル
 
-review-raven は `read_pr_comments` として公開する（**専用 GitHub App モードだけ**。旧 `gateway` モードの公開面は変えない）。入力は `{owner, repo, pr}`。成功は output schema、失敗は error schema の envelope を `structuredContent` に返し、失敗の結果は `isError: true`。GitHub の認証・権限のエラーは、他のツールと同じ分類で返す（reader の gate の code ではない）。
-
-## 構成
+review-ravenは専用GitHub Appモードの`read_pr_comments`として公開する。入力は`{owner, repo, pr}`。旧gatewayモードの公開面は変えない。成功・gate失敗はそれぞれ下記schemaのenvelopeを`structuredContent`に返し、失敗は`isError: true`。GitHubの認証・権限エラーは既存toolの分類を維持する。
 
 | パス | 内容 |
 |---|---|
-| `read_pr_comments.output.schema.json` | 成功応答の JSON Schema |
-| `read_pr_comments.error.schema.json` | 失敗応答（エラー envelope）の JSON Schema |
-| `scenarios.json` | 取得結果の列 → 期待結果の共通シナリオ。review-raven（Go）と thread-owl（TypeScript）が、それぞれの実装に対して同じものを実行する |
+| `read_pr_comments.output.schema.json` | v2成功応答 |
+| `read_pr_comments.error.schema.json` | v2失敗応答 |
+| `scenarios.json` | Go/TypeScriptで共用する取得列と期待結果 |
 
-## シナリオの形式
+## 共有シナリオ
 
-```jsonc
-{
-  "name": "...",
-  "serverAllowlist": ["thread-owl", ...],          // サーバーの allowlist（正規化済み）
-  "projectAllowlist": {"state": "absent"}           // ファイルなし（追加なし）
-                    | {"state": "present", "logins": ["ci-bot"]}
-                    | {"state": "invalid"},        // ファイルがあるが壊れている
-  "fetches": [ <snapshot> | {"moved": true}, ... ],  // 取得（Fetch）の呼び出し 1 回ごとの応答。順番に使う
-  "expect": {
-    "outcome": "ok" | "error",
-    "code": "...",                       // error のとき
-    "fetchCalls": 2, "bodyFetchCalls": 1,  // 取得の呼び出し回数（うち、本文を要求した回数）
-    "commentIds": ["kind:id", ...],        // ok のとき返るコメント（順不同）
-    "errorCommentIds": ["kind:id", ...],   // error のとき details.comments に載るコメント（順不同）
-    "allowlist": {"serverLogins": 4, "projectFile": true, "projectLogins": 1}  // 任意
-  }
-}
-```
+fixtureの`schemaVersion`も2。各シナリオは次を持つ。
 
-- `fetches` の各 snapshot は**本文つき**で書く。`withBodies=false`（メタデータ）の呼び出しには、本文を除いて返す（GitHub に本文を選択させない問い合わせの応答を模す）。`{"moved": true}` は、ページ取得中に PR の commit が動いたことを表す（`ErrSnapshotMoved`）。
-- 呼び出し回数がシナリオの `fetches` を超えたら失敗とする（取り直しの回数の誤りを検出する）。
-- 失敗の応答は error schema を満たし、どのコメントの本文も含まない。成功の応答は output schema を満たし、全コメントに本文がある。
-- 検証で止まったシナリオ（`UNTRUSTED_COMMENT` / `AUTHOR_CHECK_FAILED` / `PROJECT_ALLOWLIST_INVALID`）は、メタデータの呼び出し回数 = 本文の呼び出し回数 + 1 を満たす（取り直した試行は「メタデータ → 本文」の組、最後に止まった試行は「メタデータ」だけ）。`TRUSTED_AUTHORS_NOT_CONFIGURED` は 0 回。
+- `serverAllowlist`: 正規化済みサーバーlogin列。
+- `projectAllowlist`: 参照変動のないfixture用の単一宣言。`state`は`absent` / `present` / `invalid`、`present`の`logins`が追加login列。
+- または`projectAllowlists`: SHAをkey、上記宣言をvalueとするmap。要求SHAに完全一致する項目だけを返し、未定義SHAの要求はテスト失敗。単一宣言との選択はfixture形式であり、製品の代替処理ではない。
+- `fetches`: snapshotまたは`{"moved": true}`の列。snapshotには`headSha` / `baseSha` / `baseRefName` / `policyBaseSha`と全コメント本文を書く。metadata要求には本文を除く。`moved`はページ取得中の参照変動を表す。
+- `expect`: `outcome`（`ok` / `error`）、`code`、`fetchCalls`、`bodyFetchCalls`、`commentIds`、`errorCommentIds`、任意の`allowlist`件数。
 
-## 実装が満たす範囲と、満たさない範囲
+宣言取得要求SHAは直前metadataの`policyBaseSha`と一致しなければならない。取得回数が列を超えれば失敗。成功はoutput schema、失敗はerror schemaを満たし、失敗にどのコメント本文も含めない。
 
-- 満たす: 検証前に本文を要求しない、検証後に変わった snapshot を返さない、失敗に本文を含めない。
-- 満たさない: 返した後にコメントが追加・編集されること。呼び出し側は、サイクルの終端で再取得して `snapshotId` を比べる。
-- 旧来の `get_review_threads`（`include_bodies` を呼び出し側が選べる）は、この契約の対象外で、スキルが新しいツールへ移行するまで残す。
+投稿者検証で停止した場合は`fetchCalls = 2 * bodyFetchCalls + 1`（既に再試行したmetadata/本文の組と最後のmetadataだけ）。サーバーallowlist空なら0回。追加シナリオは現在branchでの許可追加・取消、本文取得中の取消、同じSHAへのbranch変更、連続変動、branch名/SHAの欠落・不正を検証する。
+
+## 保証の限界
+
+最後の参照観測後のコメント・branch・宣言変更を原子的に防ぐものではない。consumerは外部書込み前とサイクル終端に再取得し、`snapshotId`と宣言元を比較する。書込みの自動再試行は含めない。
+
+旧`get_review_threads`はこの強制契約の対象外である。

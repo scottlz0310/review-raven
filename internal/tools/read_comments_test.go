@@ -74,6 +74,9 @@ type fakeGitHub struct {
 
 func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(r.URL.Path, "/contents/") {
+		if r.URL.Query().Get("ref") != strings.Repeat("4", 40) {
+			f.t.Errorf("PR比較用SHAではなく現在branchの宣言SHAを使う必要があります: %s", r.URL.Query().Get("ref"))
+		}
 		if f.project == nil {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
@@ -103,7 +106,8 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	refs := map[string]any{"headRefOid": strings.Repeat("1", 40), "baseRefOid": strings.Repeat("2", 40)}
 	empty := map[string]any{"nodes": []any{}, "pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""}}
-	pr := map[string]any{"headRefOid": refs["headRefOid"], "baseRefOid": refs["baseRefOid"]}
+	pr := map[string]any{"headRefOid": refs["headRefOid"], "baseRefOid": refs["baseRefOid"], "baseRefName": "main",
+		"baseRef": map[string]any{"name": "main", "prefix": "refs/heads/", "target": map[string]any{"__typename": "Commit", "oid": strings.Repeat("4", 40)}}}
 	switch {
 	case strings.Contains(req.Query, "reviewThreads("):
 		pr["reviewThreads"] = empty

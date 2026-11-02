@@ -1,7 +1,7 @@
 package reader
 
 // SchemaVersion is the version of the reader contract.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Output is the wire form of a verified snapshot (read_pr_comments).
 type Output struct {
@@ -9,6 +9,8 @@ type Output struct {
 	SnapshotID    string          `json:"snapshotId"`
 	HeadSHA       string          `json:"headSha"`
 	BaseSHA       string          `json:"baseSha"`
+	BaseRefName   string          `json:"baseRefName"`
+	PolicyBaseSHA string          `json:"policyBaseSha"`
 	Allowlist     OutputAllowlist `json:"allowlist"`
 	Threads       []OutputThread  `json:"threads"`
 	Reviews       []OutputComment `json:"reviews"`
@@ -97,6 +99,8 @@ func ToOutput(r Result) Output {
 		SnapshotID:    r.SnapshotID,
 		HeadSHA:       s.HeadSHA,
 		BaseSHA:       s.BaseSHA,
+		BaseRefName:   s.BaseRefName,
+		PolicyBaseSHA: s.PolicyBaseSHA,
 		Allowlist: OutputAllowlist{
 			ServerLogins:  r.Allowlist.ServerLogins,
 			ProjectFile:   r.Allowlist.ProjectFile,
