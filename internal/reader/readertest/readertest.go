@@ -48,6 +48,8 @@ type Fetch struct {
 	Moved         bool      `json:"moved"`
 	HeadSHA       string    `json:"headSha"`
 	BaseSHA       string    `json:"baseSha"`
+	BaseRefName   string    `json:"baseRefName"`
+	PolicyBaseSHA string    `json:"policyBaseSha"`
 	Threads       []Thread  `json:"threads"`
 	Reviews       []Comment `json:"reviews"`
 	IssueComments []Comment `json:"issueComments"`
@@ -68,17 +70,21 @@ type Expect struct {
 	} `json:"allowlist"`
 }
 
+// ProjectAllowlistはfixtureの宣言ファイルを表す。
+type ProjectAllowlist struct {
+	State  string   `json:"state"`
+	Logins []string `json:"logins"`
+}
+
 // Scenario is one shared scenario.
 type Scenario struct {
-	Name             string   `json:"name"`
-	Description      string   `json:"description"`
-	ServerAllowlist  []string `json:"serverAllowlist"`
-	ProjectAllowlist struct {
-		State  string   `json:"state"`
-		Logins []string `json:"logins"`
-	} `json:"projectAllowlist"`
-	Fetches []Fetch `json:"fetches"`
-	Expect  Expect  `json:"expect"`
+	Name              string                      `json:"name"`
+	Description       string                      `json:"description"`
+	ServerAllowlist   []string                    `json:"serverAllowlist"`
+	ProjectAllowlist  ProjectAllowlist            `json:"projectAllowlist"`
+	ProjectAllowlists map[string]ProjectAllowlist `json:"projectAllowlists"`
+	Fetches           []Fetch                     `json:"fetches"`
+	Expect            Expect                      `json:"expect"`
 }
 
 func contractDir() string {
@@ -100,7 +106,7 @@ func Load(t testing.TB) []Scenario {
 	if err := json.Unmarshal(raw, &file); err != nil {
 		t.Fatal(err)
 	}
-	if file.SchemaVersion != 1 || len(file.Scenarios) == 0 {
+	if file.SchemaVersion != reader.SchemaVersion || len(file.Scenarios) == 0 {
 		t.Fatalf("unexpected scenarios file: schemaVersion=%d scenarios=%d", file.SchemaVersion, len(file.Scenarios))
 	}
 	return file.Scenarios
@@ -119,7 +125,7 @@ func (c Comment) toComment(kind reader.Kind, withBody bool) reader.Comment {
 }
 
 func (f Fetch) snapshot(withBodies bool) reader.Snapshot {
-	s := reader.Snapshot{HeadSHA: f.HeadSHA, BaseSHA: f.BaseSHA}
+	s := reader.Snapshot{HeadSHA: f.HeadSHA, BaseSHA: f.BaseSHA, BaseRefName: f.BaseRefName, PolicyBaseSHA: f.PolicyBaseSHA}
 	for _, t := range f.Threads {
 		th := reader.Thread{ID: t.ID, Path: t.Path, Line: t.Line, IsResolved: t.IsResolved, IsOutdated: t.IsOutdated}
 		for _, c := range t.Comments {
@@ -166,10 +172,21 @@ func (s *Source) Fetch(_ context.Context, withBodies bool) (reader.Snapshot, err
 }
 
 // ProjectAllowlist implements reader.Source.
-func (s *Source) ProjectAllowlist(_ context.Context, _ string) (reader.ProjectAllowlist, error) {
-	switch s.scenario.ProjectAllowlist.State {
+func (s *Source) ProjectAllowlist(_ context.Context, sha string) (reader.ProjectAllowlist, error) {
+	if s.Calls == 0 || sha != s.scenario.Fetches[s.Calls-1].PolicyBaseSHA {
+		s.t.Fatalf("宣言の参照SHAが現在のmetadataと一致しません: %s", sha)
+	}
+	project := s.scenario.ProjectAllowlist
+	if s.scenario.ProjectAllowlists != nil {
+		var found bool
+		project, found = s.scenario.ProjectAllowlists[sha]
+		if !found {
+			s.t.Fatalf("未定義の宣言SHAを参照しました: %s", sha)
+		}
+	}
+	switch project.State {
 	case "present":
-		return reader.ProjectAllowlist{State: reader.ProjectAllowlistPresent, Logins: s.scenario.ProjectAllowlist.Logins}, nil
+		return reader.ProjectAllowlist{State: reader.ProjectAllowlistPresent, Logins: project.Logins}, nil
 	case "invalid":
 		_, err := trustedauthors.ParseProjectFile([]byte(`{"version":1}`))
 		return reader.ProjectAllowlist{}, errors.Join(reader.ErrProjectAllowlistInvalid, err)

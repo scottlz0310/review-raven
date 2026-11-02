@@ -130,9 +130,51 @@ func TestErrorEnvelopeClampsLongMessagesOnACharacterBoundary(t *testing.T) {
 type failingProjectSource struct{ err error }
 
 func (s *failingProjectSource) Fetch(context.Context, bool) (reader.Snapshot, error) {
-	return reader.Snapshot{HeadSHA: strings.Repeat("1", 40), BaseSHA: strings.Repeat("2", 40)}, nil
+	return reader.Snapshot{HeadSHA: strings.Repeat("1", 40), BaseSHA: strings.Repeat("2", 40), BaseRefName: "main", PolicyBaseSHA: strings.Repeat("4", 40)}, nil
 }
 
 func (s *failingProjectSource) ProjectAllowlist(context.Context, string) (reader.ProjectAllowlist, error) {
 	return reader.ProjectAllowlist{}, s.err
+}
+
+type unavailablePolicySource struct {
+	failWithBodies bool
+	bodyCalls      int
+	policyCalls    int
+}
+
+func (s *unavailablePolicySource) Fetch(_ context.Context, withBodies bool) (reader.Snapshot, error) {
+	if withBodies {
+		s.bodyCalls++
+	}
+	if withBodies == s.failWithBodies {
+		return reader.Snapshot{}, errors.Join(errors.New("参照取得"), reader.ErrPolicyRefUnavailable)
+	}
+	return reader.Snapshot{HeadSHA: strings.Repeat("1", 40), BaseSHA: strings.Repeat("2", 40), BaseRefName: "main", PolicyBaseSHA: strings.Repeat("4", 40)}, nil
+}
+
+func (s *unavailablePolicySource) ProjectAllowlist(context.Context, string) (reader.ProjectAllowlist, error) {
+	s.policyCalls++
+	return reader.ProjectAllowlist{}, nil
+}
+
+func TestUnavailablePolicyRefNeverReturnsBodies(t *testing.T) {
+	for _, full := range []bool{false, true} {
+		t.Run(map[bool]string{false: "metadata取得時", true: "本文取得時"}[full], func(t *testing.T) {
+			src := &unavailablePolicySource{failWithBodies: full}
+			result, err := reader.Read(context.Background(), src, []string{"thread-owl"})
+			var gateErr *reader.Error
+			if !errors.As(err, &gateErr) || gateErr.Code != reader.CodePolicyRefUnavailable || result.SnapshotID != "" {
+				t.Fatalf("result = %+v, error = %v", result, err)
+			}
+			wantCalls := 0
+			if full {
+				wantCalls = 1
+			}
+			if src.bodyCalls != wantCalls || src.policyCalls != wantCalls {
+				t.Fatalf("bodyCalls=%d policyCalls=%d, want %d", src.bodyCalls, src.policyCalls, wantCalls)
+			}
+			readertest.Validate(t, readertest.Schema(t, "read_pr_comments.error.schema.json"), reader.ToErrorEnvelope(gateErr))
+		})
+	}
 }

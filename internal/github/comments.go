@@ -56,8 +56,17 @@ type commentThreadNode struct {
 }
 
 type pullRequestRefs struct {
-	HeadRefOid githubv4.String
-	BaseRefOid githubv4.String
+	HeadRefOid  githubv4.String
+	BaseRefOid  githubv4.String
+	BaseRefName githubv4.String
+	BaseRef     *struct {
+		Name   githubv4.String
+		Prefix githubv4.String
+		Target struct {
+			TypeName githubv4.String `graphql:"__typename"`
+			Oid      githubv4.String
+		}
+	}
 }
 
 type commentThreadsQuery struct {
@@ -111,8 +120,8 @@ type issueCommentsQuery struct {
 
 // CommentSnapshot reads every review thread comment, review body and issue
 // comment of a pull request, across all pages. With withBodies=false no body is
-// requested from GitHub. It returns reader.ErrSnapshotMoved when the pull
-// request's head or base changes while it is paging.
+// requested from GitHub.
+// PRのhead/base・base branch名・現在の宣言SHAがページング中に変わればErrSnapshotMovedを返す。
 func (c *Client) CommentSnapshot(ctx context.Context, owner, repo string, pr int, withBodies bool) (reader.Snapshot, error) {
 	if pr <= 0 || pr > math.MaxInt32 {
 		return reader.Snapshot{}, fmt.Errorf("pr number out of valid range: %d", pr)
@@ -131,11 +140,18 @@ func (c *Client) CommentSnapshot(ctx context.Context, owner, repo string, pr int
 	var haveRefs bool
 	setRefs := func(refs pullRequestRefs) error {
 		head, baseSHA := string(refs.HeadRefOid), string(refs.BaseRefOid)
+		if refs.BaseRef == nil || refs.BaseRefName == "" || refs.BaseRef.Name != refs.BaseRefName ||
+			refs.BaseRef.Prefix != "refs/heads/" || refs.BaseRef.Target.TypeName != "Commit" ||
+			refs.BaseRef.Target.Oid == "" {
+			return reader.ErrPolicyRefUnavailable
+		}
+		name, policySHA := string(refs.BaseRefName), string(refs.BaseRef.Target.Oid)
 		if !haveRefs {
 			snap.HeadSHA, snap.BaseSHA, haveRefs = head, baseSHA, true
+			snap.BaseRefName, snap.PolicyBaseSHA = name, policySHA
 			return nil
 		}
-		if snap.HeadSHA != head || snap.BaseSHA != baseSHA {
+		if snap.HeadSHA != head || snap.BaseSHA != baseSHA || snap.BaseRefName != name || snap.PolicyBaseSHA != policySHA {
 			return reader.ErrSnapshotMoved
 		}
 		return nil

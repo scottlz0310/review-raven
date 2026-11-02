@@ -49,6 +49,8 @@ Copilot系8 tool、`diagnose_github_token`、watch resource templateは登録せ
 
 スレッド取得の既存契約は変えない。投稿者ゲートはmetadata全ページ取得→許可リスト照合→本文取得の順に行う。`include_bodies=false`ではGraphQL queryにも本文を含めない。既存の`get_review_threads`は本文取得tool自体に投稿者ゲートを強制しない。投稿者検証を強制して本文を返すreaderが`read_pr_comments`で、専用Appモードだけで公開する（旧`gateway`モードの公開面は変えない）。契約は[docs/design/contracts/reader](design/contracts/reader/README.md)。
 
+reader契約v2は`baseSha`（PR比較元）と`baseRefName` / `policyBaseSha`（現在のbase branchの宣言元）を分離する。宣言元を確認できなければ`POLICY_REF_UNAVAILABLE`で停止し、取得中の参照変動は再検証する。旧schemaへの代替は行わず、thread-owlと両skillも対応版へ揃えて公開・配備する。
+
 `post_runner_escalation` は `owner`・`repo`・`pr`・40桁の小文字 `headSha` と `reason: resume_unresponsive` を受け付ける。投稿前のPR読取とコメント投稿は不可分ではないため、投稿後にもHEADは変わりうる。通信失敗時は投稿済みか不明なため自動再試行せず、GitHubの状態を確認する。自由文やその他の理由は受け付けず、コメントだけでレビュー完了を意味しない。再依頼/対応サマリには別の`post_review_cycle_comment`を提供するが、汎用PR conversation投稿toolとPR本文更新/Q3は提供しない。現行skillが`{GH}`で行う投稿はgateway bot名義のままなので、Q8全体の完了は後続の経路置換まで保留する。
 
 ## 配備とV4検証

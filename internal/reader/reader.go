@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -40,6 +41,7 @@ const (
 	CodeTrustedAuthorsNotConfigured = "TRUSTED_AUTHORS_NOT_CONFIGURED"
 	CodeProjectAllowlistInvalid     = "PROJECT_ALLOWLIST_INVALID"
 	CodeSnapshotChanged             = "SNAPSHOT_CHANGED"
+	CodePolicyRefUnavailable        = "POLICY_REF_UNAVAILABLE"
 )
 
 // MaxAttempts is how many times a stale snapshot is re-read before giving up.
@@ -73,6 +75,8 @@ type Thread struct {
 type Snapshot struct {
 	HeadSHA       string
 	BaseSHA       string
+	BaseRefName   string
+	PolicyBaseSHA string
 	Threads       []Thread
 	Reviews       []Comment
 	IssueComments []Comment
@@ -99,15 +103,16 @@ type ProjectAllowlist struct {
 // the pull request's commits changed while it was paging.
 type Source interface {
 	Fetch(ctx context.Context, withBodies bool) (Snapshot, error)
-	// ProjectAllowlist reads the project allowlist file at baseSHA. A file that
-	// exists but is malformed is an error that wraps ErrProjectAllowlistInvalid.
-	ProjectAllowlist(ctx context.Context, baseSHA string) (ProjectAllowlist, error)
+	// ProjectAllowlistは現在のbase branch先頭として確認したpolicyBaseSHAだけを読む。
+	// 存在する宣言が不正な場合はErrProjectAllowlistInvalidを返す。
+	ProjectAllowlist(ctx context.Context, policyBaseSHA string) (ProjectAllowlist, error)
 }
 
 // Sentinel errors a Source may return.
 var (
 	ErrSnapshotMoved           = errors.New("pull request changed while reading")
 	ErrProjectAllowlistInvalid = errors.New("project allowlist is invalid")
+	ErrPolicyRefUnavailable    = errors.New("base branch policy ref unavailable")
 )
 
 // CommentRef identifies a comment without its text.
@@ -165,7 +170,7 @@ func Read(ctx context.Context, src Source, serverLogins []string) (Result, error
 		if attempt >= MaxAttempts {
 			return Result{}, &Error{
 				Code:    CodeSnapshotChanged,
-				Message: fmt.Sprintf("comments changed between the author check and the text read on %d attempts; no text was returned", MaxAttempts),
+				Message: fmt.Sprintf("コメントまたはPR・宣言の参照が%d回連続で変化したため、本文を返しません", MaxAttempts),
 			}
 		}
 	}
@@ -175,6 +180,9 @@ func Read(ctx context.Context, src Source, serverLogins []string) (Result, error
 func readOnce(ctx context.Context, src Source, serverLogins []string) (res Result, stale bool, err error) {
 	meta, err := src.Fetch(ctx, false)
 	if err != nil {
+		if errors.Is(err, ErrPolicyRefUnavailable) {
+			return Result{}, false, policyRefError()
+		}
 		if errors.Is(err, ErrSnapshotMoved) {
 			return Result{}, true, nil
 		}
@@ -183,8 +191,11 @@ func readOnce(ctx context.Context, src Source, serverLogins []string) (res Resul
 	if err := validateIDs(meta); err != nil {
 		return Result{}, false, err
 	}
+	if err := validatePolicyRef(meta); err != nil {
+		return Result{}, false, err
+	}
 
-	project, err := src.ProjectAllowlist(ctx, meta.BaseSHA)
+	project, err := src.ProjectAllowlist(ctx, meta.PolicyBaseSHA)
 	if err != nil {
 		if errors.Is(err, ErrProjectAllowlistInvalid) {
 			return Result{}, false, &Error{Code: CodeProjectAllowlistInvalid, Message: err.Error()}
@@ -205,10 +216,16 @@ func readOnce(ctx context.Context, src Source, serverLogins []string) (res Resul
 
 	full, err := src.Fetch(ctx, true)
 	if err != nil {
+		if errors.Is(err, ErrPolicyRefUnavailable) {
+			return Result{}, false, policyRefError()
+		}
 		if errors.Is(err, ErrSnapshotMoved) {
 			return Result{}, true, nil
 		}
 		return Result{}, false, fmt.Errorf("read comment text: %w", err)
+	}
+	if err := validatePolicyRef(full); err != nil {
+		return Result{}, false, err
 	}
 	if fingerprint(meta) != fingerprint(full) {
 		return Result{}, true, nil
@@ -231,6 +248,19 @@ func readOnce(ctx context.Context, src Source, serverLogins []string) (res Resul
 type located struct {
 	comment  Comment
 	threadID string
+}
+
+var policySHAPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+func policyRefError() *Error {
+	return &Error{Code: CodePolicyRefUnavailable, Message: "base branch名または現在の先頭SHAを確認できないため、本文を返しません"}
+}
+
+func validatePolicyRef(s Snapshot) error {
+	if s.BaseRefName == "" || !policySHAPattern.MatchString(s.PolicyBaseSHA) {
+		return policyRefError()
+	}
+	return nil
 }
 
 func allComments(s Snapshot) []located {
@@ -310,13 +340,12 @@ func requireBodies(s Snapshot) error {
 // same fingerprint have the same comments by the same authors, none edited in
 // between. Thread resolution does not matter: it carries no author or text.
 func fingerprint(s Snapshot) string {
-	lines := make([]string, 0, 2)
-	lines = append(lines, "head="+s.HeadSHA, "base="+s.BaseSHA)
+	lines := []string{"head=" + s.HeadSHA, "base=" + s.BaseSHA, "baseRef=" + s.BaseRefName, "policy=" + s.PolicyBaseSHA}
 	for _, l := range allComments(s) {
 		c := l.comment
 		lines = append(lines, strings.Join([]string{string(c.Kind), c.ID, l.threadID, c.Author, c.AuthorType, c.EditedAt}, "|"))
 	}
-	sort.Strings(lines[2:])
+	sort.Strings(lines[4:])
 	return strings.Join(lines, "\n")
 }
 
