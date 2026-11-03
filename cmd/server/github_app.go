@@ -21,7 +21,14 @@ func loadGitHubAppConfig(getenv func(string) string, readFile func(string) ([]by
 	if mode == "" {
 		mode = "gateway"
 	}
+	followUp := strings.TrimSpace(getenv("REVIEW_RAVEN_ENABLE_FOLLOW_UP_ISSUES"))
+	if followUp != "" && followUp != "false" && followUp != "true" {
+		return "", nil, errors.New("REVIEW_RAVEN_ENABLE_FOLLOW_UP_ISSUESはtrueまたはfalseを指定してください")
+	}
 	if mode == "gateway" {
+		if followUp == "true" {
+			return "", nil, errors.New("follow-up Issue機能はgithub-appモードだけで有効化できます")
+		}
 		return mode, nil, nil
 	}
 	if mode != "github-app" {
@@ -71,7 +78,7 @@ func loadGitHubAppConfig(getenv func(string) string, readFile func(string) ([]by
 		}
 	}
 	return mode, &appAuthConfig{
-		Config:      githubapp.Config{AppID: appID, InstallationID: installationID, Owner: owner, PrivateKeyPEM: key},
+		Config:      githubapp.Config{AppID: appID, InstallationID: installationID, Owner: owner, PrivateKeyPEM: key, EnableFollowUpIssues: followUp == "true"},
 		ProxySecret: proxySecret,
 	}, nil
 }

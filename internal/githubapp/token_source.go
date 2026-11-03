@@ -23,12 +23,13 @@ import (
 const apiVersion = "2026-03-10"
 
 type Config struct {
-	AppID          int64
-	InstallationID int64
-	Owner          string
-	PrivateKeyPEM  []byte
-	HTTPClient     *http.Client
-	Now            func() time.Time
+	AppID                int64
+	InstallationID       int64
+	Owner                string
+	PrivateKeyPEM        []byte
+	EnableFollowUpIssues bool
+	HTTPClient           *http.Client
+	Now                  func() time.Time
 }
 
 type TokenSource struct {
@@ -100,7 +101,7 @@ func (s *TokenSource) ValidateInstallation(ctx context.Context) error {
 		installation.RepositorySelection != "all" || installation.SuspendedAt != nil {
 		return errors.New("GitHub Appのinstallationは指定組織の全repoを対象とする有効なinstallationではありません")
 	}
-	for name, required := range requiredPermissions() {
+	for name, required := range s.requiredPermissions() {
 		actual := installation.Permissions[name]
 		if actual != required && (required != "read" || actual != "write") {
 			return fmt.Errorf("GitHub Appのinstallationに%s: %s権限がありません", name, required)
@@ -119,8 +120,12 @@ func (s *TokenSource) BotLogin() string {
 	return s.botLogin
 }
 
-func requiredPermissions() map[string]string {
-	return map[string]string{"metadata": "read", "pull_requests": "write", "contents": "write", "checks": "read"}
+func (s *TokenSource) requiredPermissions() map[string]string {
+	permissions := map[string]string{"metadata": "read", "pull_requests": "write", "contents": "write", "checks": "read"}
+	if s.config.EnableFollowUpIssues {
+		permissions["issues"] = "write"
+	}
+	return permissions
 }
 
 func (s *TokenSource) Token(ctx context.Context) (string, error) {
@@ -130,7 +135,7 @@ func (s *TokenSource) Token(ctx context.Context) (string, error) {
 	if s.token != "" && s.expiry.After(s.config.Now().Add(5*time.Minute)) {
 		return s.token, nil
 	}
-	body, err := json.Marshal(map[string]any{"permissions": requiredPermissions()})
+	body, err := json.Marshal(map[string]any{"permissions": s.requiredPermissions()})
 	if err != nil {
 		return "", fmt.Errorf("installation tokenの権限をエンコードできません: %w", err)
 	}

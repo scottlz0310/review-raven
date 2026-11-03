@@ -92,12 +92,14 @@ func TestInstallationClientProvider(t *testing.T) {
 }
 
 func TestGitHubAppModeSurface(t *testing.T) {
-	for _, appMode := range []bool{false, true} {
-		t.Run(map[bool]string{false: "gateway", true: "github-app"}[appMode], func(t *testing.T) {
+	for _, mode := range []string{"gateway", "github-app", "github-app-issues"} {
+		appMode := mode != "gateway"
+		t.Run(mode, func(t *testing.T) {
 			db := openServerTestDB(t)
 			opts := BuilderOptions{TrustedCommentAuthors: []string{"review-raven"}}
 			if appMode {
 				opts.InstallationTokens = &testInstallationTokens{token: "installation-token"}
+				opts.EnableFollowUpIssues = mode == "github-app-issues"
 			}
 			handler := BuildStreamableHandlerWithOptions(db, time.Second, opts)
 			t.Cleanup(handler.Close)
@@ -142,7 +144,11 @@ func TestGitHubAppModeSurface(t *testing.T) {
 			}
 			sort.Strings(names)
 			if appMode {
-				want := []string{"get_pr_context", "get_pr_description", "get_review_threads", "get_trusted_comment_authors", "list_check_runs_for_sha", "post_review_cycle_comment", "post_runner_escalation", "read_pr_comments", "reply_and_resolve_review_thread", "reply_to_review_thread", "resolve_review_thread", "update_pr_description"}
+				want := []string{"get_pr_context", "get_pr_description", "get_review_threads", "get_trusted_comment_authors", "list_check_runs_for_sha", "post_review_cycle_comment", "post_runner_escalation", "read_pr_comments", "reply_and_resolve_review_thread", "reply_to_pr_comment", "reply_to_review_thread", "resolve_review_thread", "update_pr_description"}
+				if opts.EnableFollowUpIssues {
+					want = append(want, "create_follow_up_issue", "get_follow_up_issue")
+					sort.Strings(want)
+				}
 				if !reflect.DeepEqual(names, want) {
 					t.Fatalf("公開tool=%v", names)
 				}

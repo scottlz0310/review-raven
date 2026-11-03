@@ -25,6 +25,8 @@ PR レビューを受けて直す側の MCP（Model Context Protocol）サーバ
 
 専用Appモード（`REVIEW_RAVEN_AUTH_MODE=github-app`）では、レビュー対応の取得・返信・resolve・check runs・投稿者検証と、ランナーの定型エスカレーションを公開します。投稿は`review-raven[bot]`名義になり、Copilot系・ユーザートークン診断・watchは非公開です。既定の`gateway`モードは従来の機能を維持します。[設定・移行・V4検証](docs/github-app-auth.md)を参照してください。
 
+汎用指摘返信・follow-up Issueの用途別APIと権限opt-inは[契約](docs/follow-up-comments.md)を参照してください。
+
 | ツール | 用途 |
 |---|---|
 | `request_copilot_review` | PR に Copilot レビューを依頼する |
