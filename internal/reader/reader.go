@@ -134,8 +134,7 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
-// Result is a verified snapshot: every comment has a body and an author that
-// passed the allowlist.
+// Resultは投稿者検証済みsnapshot。Readでは本文付き、ReadMetadataでは本文なし。
 type Result struct {
 	Snapshot   Snapshot
 	SnapshotID string
@@ -152,6 +151,15 @@ type AllowlistInfo struct {
 // Read returns the verified snapshot of a pull request. serverLogins is the
 // normalized server allowlist; an empty list trusts nobody and is an error.
 func Read(ctx context.Context, src Source, serverLogins []string) (Result, error) {
+	return read(ctx, src, serverLogins, true)
+}
+
+// ReadMetadataは本文を一切要求せず、同じ投稿者ゲートとsnapshot照合を適用する。
+func ReadMetadata(ctx context.Context, src Source, serverLogins []string) (Result, error) {
+	return read(ctx, src, serverLogins, false)
+}
+
+func read(ctx context.Context, src Source, serverLogins []string, withBodies bool) (Result, error) {
 	if len(serverLogins) == 0 {
 		return Result{}, &Error{
 			Code:    CodeTrustedAuthorsNotConfigured,
@@ -160,7 +168,7 @@ func Read(ctx context.Context, src Source, serverLogins []string) (Result, error
 	}
 
 	for attempt := 1; ; attempt++ {
-		result, stale, err := readOnce(ctx, src, serverLogins)
+		result, stale, err := readOnce(ctx, src, serverLogins, withBodies)
 		if err != nil {
 			return Result{}, err
 		}
@@ -177,7 +185,7 @@ func Read(ctx context.Context, src Source, serverLogins []string) (Result, error
 }
 
 // readOnce does one pass. stale=true means the pass must be repeated.
-func readOnce(ctx context.Context, src Source, serverLogins []string) (res Result, stale bool, err error) {
+func readOnce(ctx context.Context, src Source, serverLogins []string, withBodies bool) (res Result, stale bool, err error) {
 	meta, err := src.Fetch(ctx, false)
 	if err != nil {
 		if errors.Is(err, ErrPolicyRefUnavailable) {
@@ -214,7 +222,7 @@ func readOnce(ctx context.Context, src Source, serverLogins []string) (res Resul
 		return Result{}, false, gateErr
 	}
 
-	full, err := src.Fetch(ctx, true)
+	full, err := src.Fetch(ctx, withBodies)
 	if err != nil {
 		if errors.Is(err, ErrPolicyRefUnavailable) {
 			return Result{}, false, policyRefError()
@@ -230,8 +238,10 @@ func readOnce(ctx context.Context, src Source, serverLogins []string) (res Resul
 	if fingerprint(meta) != fingerprint(full) {
 		return Result{}, true, nil
 	}
-	if err := requireBodies(full); err != nil {
-		return Result{}, false, err
+	if withBodies {
+		if err := requireBodies(full); err != nil {
+			return Result{}, false, err
+		}
 	}
 
 	return Result{

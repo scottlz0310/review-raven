@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- 専用App向けget_pr_contextを追加。本文なしで全コメントの投稿者を既存readerで検証し、PR参照と現在base branchのCI宣言を照合する。skill移行・公開/配備・GitHub MCP整理は後続。
+
 ## [0.11.0] - 2026-11-02
 
 ### Fixed
