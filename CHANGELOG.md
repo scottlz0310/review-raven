@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 専用Appに元指摘・HEAD・snapshotを照合する汎用返信とfollow-up Issue作成/検証APIを追加。Issue機能は既定無効のopt-inとし、全件投稿者ゲート・App identity・投稿後読戻し・結果不明時停止を適用する。
+
 - 専用App向けget_pr_contextを追加。本文なしで全コメントの投稿者を既存readerで検証し、PR参照と現在base branchのCI宣言を照合する。skill移行・公開/配備・GitHub MCP整理は後続。
 
 ## [0.11.0] - 2026-11-02

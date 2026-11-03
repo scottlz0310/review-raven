@@ -83,6 +83,7 @@ func main() {
 		}
 		builderOpts.InstallationTokens = source
 		builderOpts.AppBotLogin = source.BotLogin()
+		builderOpts.EnableFollowUpIssues = cfg.githubApp.EnableFollowUpIssues
 		slog.Info("専用Appのinstallationを確認しました", "app_id", cfg.githubApp.AppID,
 			"installation_id", cfg.githubApp.InstallationID, "owner", cfg.githubApp.Owner)
 

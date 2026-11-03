@@ -25,6 +25,8 @@ An MCP (Model Context Protocol) server for the **reviewed side** of a PR review 
 
 専用Appモード（`REVIEW_RAVEN_AUTH_MODE=github-app`）の認証・toolの公開範囲・移行手順は[専用GitHub App認証](docs/github-app-auth.md)を参照してください。既定の`gateway`モードは従来の機能を維持します。
 
+汎用指摘返信・follow-up Issueの用途別APIと権限opt-inは[契約](docs/follow-up-comments.md)を参照してください。
+
 | Tool | Description |
 |---|---|
 | `request_copilot_review` | Request a Copilot review on a PR |

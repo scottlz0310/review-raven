@@ -23,7 +23,7 @@
 
 鍵はB64・FILEの片方だけを指定する。PKCS#1・PKCS#8のRSA PEMに対応する。鍵・tokenはログ、PR、リポジトリへ書かない。Client ID・Client secret・OAuth callback・専用Appのdevice flowは使用しない。
 
-必要なinstallation権限はMetadata read、Pull requests write、Contents write、Checks read。token発行時もこの4権限だけを要求する。Commit statuses readは現行のcheck-runs取得に使用しないため、tokenに含めない。Contents writeはGraphQL resolveの実測を前提に採用しており、コードへの書き込み権限も含む。
+必要なinstallation権限はMetadata read、Pull requests write、Contents write、Checks read。既定ではtoken発行時もこの4権限だけを要求する。`REVIEW_RAVEN_ENABLE_FOLLOW_UP_ISSUES=true`の場合は、起動時検証とtoken要求の両方へIssues writeを追加する。Commit statuses readは現行のcheck-runs取得に使用しないため、tokenに含めない。Contents writeはGraphQL resolveの実測を前提に採用しており、コードへの書き込み権限も含む。
 
 installation tokenをメモリで共有し、有効期限の5分前から次のtool呼び出しで更新する。同時呼び出しによる重複発行を防ぐ。GitHubの401は該当世代のキャッシュを無効化し、元の呼び出しにはエラーを返す。書き込みの自動再試行は行わない。token発行失敗時は古いtoken・利用者tokenで継続せず、原因を呼び出し元へ返す。
 
@@ -31,7 +31,7 @@ installation tokenをメモリで共有し、有効期限の5分前から次のt
 
 ## MCPの公開範囲
 
-専用Appモードでは次のtoolを公開する。
+専用Appモードでは次のtoolを公開する。`reply_to_pr_comment`も専用Appで公開し、Issue機能opt-in時だけ`create_follow_up_issue`と`get_follow_up_issue`を追加する。
 
 - `get_review_threads`
 - `reply_to_review_thread`
@@ -93,3 +93,7 @@ reader契約v2は`baseSha`（PR比較元）と`baseRefName` / `policyBaseSha`（
 - [installation tokenの発行・権限・有効期限](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app)
 - [review commentの権限](https://docs.github.com/en/rest/pulls/comments)
 - [check-runsの権限](https://docs.github.com/en/rest/checks/runs)
+
+## 元指摘返信・follow-up Issue
+
+`reply_to_pr_comment`は専用Appで公開する。`REVIEW_RAVEN_ENABLE_FOLLOW_UP_ISSUES=true`の場合だけ、`create_follow_up_issue`と`get_follow_up_issue`を公開し、起動時検証とtoken発行要求にIssues writeを加える。既定falseでは既存4権限を維持する。実App権限・installation同意は自動変更しない。[入力・投稿者検証・結果不明時停止の契約](follow-up-comments.md)。
