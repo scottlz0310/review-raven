@@ -159,6 +159,7 @@ func BuildStreamableHandlerWithOptions(db *store.DB, threshold time.Duration, op
 	// reader は、投稿者を proxy 検証できる専用 App モードだけで公開する。旧 gateway モードの公開面は変えない。
 	if opts.InstallationTokens != nil {
 		RegisterReadPRCommentsTool(srv, clientProvider, opts.TrustedCommentAuthors)
+		RegisterPRContextTool(srv, clientProvider, opts.TrustedCommentAuthors)
 		RegisterEscalationCommentTool(srv, clientProvider)
 		RegisterReviewCycleCommentTool(srv, clientProvider)
 		RegisterPRDescriptionTools(srv, clientProvider, opts.AppBotLogin)
