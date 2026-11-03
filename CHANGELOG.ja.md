@@ -9,6 +9,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-03
+
 ### Documentation
 
 - 横断の責務・関連Issue・進捗観測の文書をreviewers-forestの正本へ統合し、repo側は参照入口と製品固有API契約を維持する。
@@ -288,7 +290,8 @@
 - この独立リポジトリでは、Mcp-Docker 時代の `review-raven` service 作業から release continuity を引き継ぐ。git 履歴は移行していない。
 - 関連する設計・移行経緯は `docs/` 配下を参照。
 
-[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/scottlz0310/review-raven/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/scottlz0310/review-raven/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/scottlz0310/review-raven/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/scottlz0310/review-raven/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/scottlz0310/review-raven/compare/v0.8.0...v0.9.0
